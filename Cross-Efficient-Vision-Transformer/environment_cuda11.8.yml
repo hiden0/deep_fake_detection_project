@@ -33,3 +33,4 @@ dependencies:
       - kornia==0.6.12
       - py3nvml==0.2.6
       - yacs==0.1.8
+      - facenet_pytorch==2.6.0
