@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+    project_gpu_tensorflow_username:   #change this name
+        container_name: vision_${PROJECT_NAME}
+        image: vision/${PROJECT_NAME}:latest
+        build:
+            context: .
+            args:
+                USER_ID: ${USER_ID}
+                GROUP_ID: ${GROUP_ID}
+                USER_NAME: ${USER_NAME}
+                WORKDIR: ${CONTAINER_WORKDIR}
+                DATASETDIR: ${CONTAINER_DATASETDIR}
+                PYTHON_VERSION: ${PYTHON_VERSION}
+                ENVIRONMENT: ${ENVIRONMENT}
+        user: "${USER_ID}:${GROUP_ID}"
+        environment:
+            WORKDIR: ${CONTAINER_WORKDIR}
+            DATASETDIR: ${CONTAINER_DATASETDIR}
+            USER_ID: ${USER_ID}
+            GROUP_ID: ${GROUP_ID}
+            USER_NAME: ${USER_NAME}
+        stdin_open: true
+        tty: true
+
+        volumes:
+            - ${HOST_WORKDIR}:${CONTAINER_WORKDIR}
+            - ${HOST_DATASETDIR}:${CONTAINER_DATASETDIR}
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          capabilities: [ gpu ]
+                          count: all
+                limits:
+                    memory: 30g
+        memswap_limit: 30g
+        cpuset: 0-10
+        ipc: "host"
