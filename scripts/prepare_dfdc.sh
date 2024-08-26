@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directorio principal donde se encuentran las carpetas
-directorio_principal="/srv/hdd2/javber/dfdc/dfdc_train_all"
+directorio_principal="/data"
 
 # Bucle para iterar sobre las carpetas
 for carpeta in "$directorio_principal"/dfdc_train_part_* ; do

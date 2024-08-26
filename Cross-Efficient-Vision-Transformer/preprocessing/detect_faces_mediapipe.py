@@ -10,7 +10,7 @@ from tqdm import tqdm
 import cv2
 import mediapipe as mp
 
-from utils import get_video_paths, get_method
+from project_utils import get_video_paths, get_method
 
 # Implementación de la clase VideoFaceDetector usando MediaPipe
 class VideoFaceDetector:

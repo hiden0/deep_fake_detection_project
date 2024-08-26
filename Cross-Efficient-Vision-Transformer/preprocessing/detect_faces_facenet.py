@@ -7,10 +7,10 @@ from typing import Type
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-import face_detector
-from face_detector import VideoDataset
-from face_detector import VideoFaceDetector
-from utils import get_video_paths, get_method
+import face_detector_facenet as face_detector
+from face_detector_facenet import VideoDataset
+from face_detector_facenet import VideoFaceDetector
+from project_utils import get_video_paths, get_method
 import argparse
 
 
