@@ -62,8 +62,6 @@ def extract_video(video, root_dir, dataset):
                 continue
             id = os.path.splitext(os.path.basename(video))[0]
             crops = []
-            cv2.imshow("frame", frame)
-            cv2.waitkey(0)
             bboxes = bboxes_dict[str(i)]
             if bboxes is None:
                 continue
@@ -90,8 +88,7 @@ def extract_video(video, root_dir, dataset):
                 crop = frame[
                     max(ymin - p_h, 0) : ymax + p_h, max(xmin - p_w, 0) : xmax + p_w
                 ]
-                cv2.imwrite("crop", crop)
-                cv2.waitKey(0)
+
                 h, w = crop.shape[:2]
                 crops.append(crop)
 
