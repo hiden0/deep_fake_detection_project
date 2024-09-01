@@ -296,8 +296,22 @@ if __name__ == "__main__":
     validation_labels = np.asarray([row[1] for row in validation_dataset])
     labels = np.asarray([row[1] for row in train_dataset])
 
+    # for row in range(len(train_dataset)):
+    #     try:
+    #         np.asarray(train_dataset[row][0])
+    #     except:
+    #         print("Error in row " + str(row))
+
     train_dataset = DeepFakesDataset(
-        np.asarray([row[0] for row in train_dataset]),
+        np.asarray(
+            [
+                np.resize(
+                    row[0],
+                    (config["model"]["image-size"], config["model"]["image-size"], 3),
+                )
+                for row in train_dataset
+            ]
+        ),
         labels,
         config["model"]["image-size"],
     )
@@ -319,7 +333,15 @@ if __name__ == "__main__":
     del train_dataset
 
     validation_dataset = DeepFakesDataset(
-        np.asarray([row[0] for row in validation_dataset]),
+        np.asarray(
+            [
+                np.resize(
+                    row[0],
+                    (config["model"]["image-size"], config["model"]["image-size"], 3),
+                )
+                for row in validation_dataset
+            ]
+        ),
         validation_labels,
         config["model"]["image-size"],
         mode="validation",
