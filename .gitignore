@@ -123,9 +123,15 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # --------------------------------------
+# Models safe
+# --------------------------------------
+models/
+# --------------------------------------
 # Project Specific Directories
 # --------------------------------------
 
+#miniconda
+docker/miniconda.sh
 # Structure
 # Ignore everything in the following 
 # directories but don't ignore the 
