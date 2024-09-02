@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from einops import rearrange, repeat
 from torch import nn, einsum
+from torchvision import transforms
 import torch.nn as nn
 import torch.nn.functional as F
 from random import random, randint, choice
@@ -11,6 +12,7 @@ import numpy as np
 from torch.optim import lr_scheduler
 import os
 import json
+from PIL import Image
 from os import cpu_count
 from multiprocessing.pool import Pool
 from functools import partial
@@ -48,8 +50,101 @@ METADATA_PATH = os.path.join(
 VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata.csv")
 
 
-def read_frames(video_path, train_dataset, validation_dataset):
+# def read_frames(video_path, train_dataset, validation_dataset):
 
+#     # Get the video label based on dataset selected
+#     method = get_method(video_path, DATA_DIR)
+#     if TRAINING_DIR in video_path:
+#         if "Original" in video_path:
+#             label = 0.0
+#         elif "DFDC" in video_path:
+#             for json_path in glob.glob(os.path.join(METADATA_PATH, "*.json")):
+#                 with open(json_path, "r") as f:
+#                     metadata = json.load(f)
+#                 video_folder_name = os.path.basename(video_path)
+#                 video_key = video_folder_name + ".mp4"
+#                 if video_key in metadata.keys():
+#                     item = metadata[video_key]
+#                     label = item.get("label", None)
+#                     if label == "FAKE":
+#                         label = 1.0
+#                     else:
+#                         label = 0.0
+#                     break
+#                 else:
+#                     label = None
+#         else:
+#             label = 1.0
+#         if label == None:
+#             print("NOT FOUND", video_path)
+#     else:
+#         if "Original" in video_path:
+#             label = 0.0
+#         elif "DFDC" in video_path:
+#             val_df = pd.DataFrame(pd.read_csv(VALIDATION_LABELS_PATH))
+#             video_folder_name = os.path.basename(video_path)
+#             video_key = video_folder_name + ".mp4"
+#             label = val_df.loc[val_df["filename"] == video_key]["label"].values[0]
+#         else:
+#             label = 1.0
+
+#     # Calculate the interval to extract the frames
+#     frames_number = len(os.listdir(video_path))
+#     if label == 0:
+#         min_video_frames = max(
+#             int(
+#                 config["training"]["frames-per-video"]
+#                 * config["training"]["rebalancing_real"]
+#             ),
+#             1,
+#         )  # Compensate unbalancing
+#     else:
+#         min_video_frames = max(
+#             int(
+#                 config["training"]["frames-per-video"]
+#                 * config["training"]["rebalancing_fake"]
+#             ),
+#             1,
+#         )
+
+#     if VALIDATION_DIR in video_path:
+#         min_video_frames = int(max(min_video_frames / 8, 2))
+#     frames_interval = int(frames_number / min_video_frames)
+#     frames_paths = os.listdir(video_path)
+#     frames_paths_dict = {}
+
+#     # Group the faces with the same index, reduce probabiity to skip some faces in the same video
+#     for path in frames_paths:
+#         for i in range(0, 1):
+#             if "_" + str(i) in path:
+#                 if i not in frames_paths_dict.keys():
+#                     frames_paths_dict[i] = [path]
+#                 else:
+#                     frames_paths_dict[i].append(path)
+
+#     # Select only the frames at a certain interval
+#     if frames_interval > 0:
+#         for key in frames_paths_dict.keys():
+#             if len(frames_paths_dict) > frames_interval:
+#                 frames_paths_dict[key] = frames_paths_dict[key][::frames_interval]
+
+#             frames_paths_dict[key] = frames_paths_dict[key][:min_video_frames]
+
+#     # Select N frames from the collected ones
+#     for key in frames_paths_dict.keys():
+#         for index, frame_image in enumerate(frames_paths_dict[key]):
+#             # image = transform(np.asarray(cv2.imread(os.path.join(video_path, frame_image))))
+#             image = cv2.imread(os.path.join(video_path, frame_image))
+#             if image is not None:
+#                 if TRAINING_DIR in video_path:
+#                     train_dataset.append((image, label))
+#                 else:
+#                     validation_dataset.append((image, label))
+
+
+def read_video_sequences(
+    video_path, sequence_length, train_dataset, validation_dataset
+):
     # Get the video label based on dataset selected
     method = get_method(video_path, DATA_DIR)
     if TRAINING_DIR in video_path:
@@ -86,58 +181,92 @@ def read_frames(video_path, train_dataset, validation_dataset):
         else:
             label = 1.0
 
-    # Calculate the interval to extract the frames
-    frames_number = len(os.listdir(video_path))
-    if label == 0:
-        min_video_frames = max(
-            int(
-                config["training"]["frames-per-video"]
-                * config["training"]["rebalancing_real"]
-            ),
-            1,
-        )  # Compensate unbalancing
-    else:
-        min_video_frames = max(
-            int(
-                config["training"]["frames-per-video"]
-                * config["training"]["rebalancing_fake"]
-            ),
-            1,
-        )
+    # Read all frames of the video
+    frames_paths = sorted(os.listdir(video_path))
+    num_frames = len(frames_paths)
 
-    if VALIDATION_DIR in video_path:
-        min_video_frames = int(max(min_video_frames / 8, 2))
-    frames_interval = int(frames_number / min_video_frames)
-    frames_paths = os.listdir(video_path)
-    frames_paths_dict = {}
-
-    # Group the faces with the same index, reduce probabiity to skip some faces in the same video
-    for path in frames_paths:
-        for i in range(0, 1):
-            if "_" + str(i) in path:
-                if i not in frames_paths_dict.keys():
-                    frames_paths_dict[i] = [path]
-                else:
-                    frames_paths_dict[i].append(path)
-
-    # Select only the frames at a certain interval
-    if frames_interval > 0:
-        for key in frames_paths_dict.keys():
-            if len(frames_paths_dict) > frames_interval:
-                frames_paths_dict[key] = frames_paths_dict[key][::frames_interval]
-
-            frames_paths_dict[key] = frames_paths_dict[key][:min_video_frames]
-
-    # Select N frames from the collected ones
-    for key in frames_paths_dict.keys():
-        for index, frame_image in enumerate(frames_paths_dict[key]):
-            # image = transform(np.asarray(cv2.imread(os.path.join(video_path, frame_image))))
-            image = cv2.imread(os.path.join(video_path, frame_image))
+    # Group frames into sequences
+    for i in range(0, num_frames - sequence_length + 1, sequence_length):
+        sequence = []
+        for j in range(sequence_length):
+            frame_path = os.path.join(video_path, frames_paths[i + j])
+            image = cv2.imread(frame_path)
             if image is not None:
-                if TRAINING_DIR in video_path:
-                    train_dataset.append((image, label))
-                else:
-                    validation_dataset.append((image, label))
+                image_resized = cv2.resize(
+                    image,
+                    (config["model"]["image-size"], config["model"]["image-size"]),
+                )
+                sequence.append(image_resized)
+
+        if len(sequence) == sequence_length:
+            # Convert the sequence to a NumPy array and add to the dataset
+            sequence_array = np.stack(sequence)
+            if TRAINING_DIR in video_path:
+                train_dataset.append((sequence_array, label))
+            else:
+                validation_dataset.append((sequence_array, label))
+
+
+# def read_video_sequences(
+#     video_path, sequence_length, train_dataset, validation_dataset
+# ):
+#     # Get the video label based on dataset selected
+#     method = get_method(video_path, DATA_DIR)
+#     if TRAINING_DIR in video_path:
+#         if "Original" in video_path:
+#             label = 0.0
+#         elif "DFDC" in video_path:
+#             for json_path in glob.glob(os.path.join(METADATA_PATH, "*.json")):
+#                 with open(json_path, "r") as f:
+#                     metadata = json.load(f)
+#                 video_folder_name = os.path.basename(video_path)
+#                 video_key = video_folder_name + ".mp4"
+#                 if video_key in metadata.keys():
+#                     item = metadata[video_key]
+#                     label = item.get("label", None)
+#                     if label == "FAKE":
+#                         label = 1.0
+#                     else:
+#                         label = 0.0
+#                     break
+#                 else:
+#                     label = None
+#         else:
+#             label = 1.0
+#         if label == None:
+#             print("NOT FOUND", video_path)
+#     else:
+#         if "Original" in video_path:
+#             label = 0.0
+#         elif "DFDC" in video_path:
+#             val_df = pd.DataFrame(pd.read_csv(VALIDATION_LABELS_PATH))
+#             video_folder_name = os.path.basename(video_path)
+#             video_key = video_folder_name + ".mp4"
+#             label = val_df.loc[val_df["filename"] == video_key]["label"].values[0]
+#         else:
+#             label = 1.0
+
+#     # Leer todas las imágenes del video y redimensionarlas en una sola pasada
+#     frames_paths = sorted(os.listdir(video_path))
+#     images = []
+#     for frame_path in frames_paths:
+#         img = cv2.imread(frame_path)
+#         if img is not None:
+#             resized_img = cv2.resize(
+#                 img, (config["model"]["image_size"], config["model"]["image_size"])
+#             )
+#             images.append(resized_img)
+
+#     # Convertir la lista de imágenes a un array de NumPy
+#     images = np.array(images)
+
+#     # Crear secuencias
+#     for i in range(0, images.shape[0] - sequence_length + 1, sequence_length):
+#         sequence = images[i : i + sequence_length]
+#         if TRAINING_DIR in video_path:
+#             train_dataset.append((sequence, label))
+#         else:
+#             validation_dataset.append((sequence, label))
 
 
 # Main body
@@ -166,7 +295,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_videos",
         type=int,
-        default=-1,
+        default=10,
         help="Maximum number of videos to use for training (default: all).",
     )
     parser.add_argument(
@@ -179,6 +308,18 @@ if __name__ == "__main__":
         type=int,
         default=0,
         help="Which EfficientNet version to use (0 or 7, default: 0)",
+    )
+    parser.add_argument(
+        "--lstm_hidden_size",
+        type=int,
+        default=256,
+        help="Size of the lstm hidden layers",
+    )
+    parser.add_argument(
+        "--lstm_num_layers",
+        type=int,
+        default=1,
+        help="How many layers lstm should haver",
     )
     parser.add_argument(
         "--patience",
@@ -199,10 +340,14 @@ if __name__ == "__main__":
         channels = 2560
 
     model = EfficientViT(
-        config=config, channels=channels, selected_efficient_net=opt.efficient_net
+        config=config,
+        channels=channels,
+        selected_efficient_net=opt.efficient_net,
+        lstm_hidden_size=opt.lstm_hidden_size,
+        lstm_num_layers=opt.lstm_num_layers,
     )
     model.train()
-
+    transform = transforms.ToTensor()
     optimizer = torch.optim.SGD(
         model.parameters(),
         lr=config["training"]["lr"],
@@ -259,7 +404,8 @@ if __name__ == "__main__":
         with tqdm(total=len(paths)) as pbar:
             for v in p.imap_unordered(
                 partial(
-                    read_frames,
+                    read_video_sequences,
+                    sequence_length=3,
                     train_dataset=train_dataset,
                     validation_dataset=validation_dataset,
                 ),
@@ -304,15 +450,16 @@ if __name__ == "__main__":
     #         print("Error in row " + str(row))
 
     train_dataset = DeepFakesDataset(
-        np.asarray(
-            [
-                np.resize(
-                    row[0],
-                    (config["model"]["image-size"], config["model"]["image-size"], 3),
-                )
-                for row in train_dataset
-            ]
-        ),
+        # np.asarray(
+        #     [
+        #         np.resize(
+        #             row[0],
+        #             (config["model"]["image-size"], config["model"]["image-size"], 3),
+        #         )
+        #         for row in train_dataset
+        #     ]
+        # ),
+        np.asarray([row[0] for row in train_dataset]),
         labels,
         config["model"]["image-size"],
     )
