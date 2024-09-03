@@ -2,7 +2,8 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import cv2
 import numpy as np
-
+import pandas as pd
+import os
 import uuid
 from albumentations import (
     Compose,
@@ -19,19 +20,31 @@ from albumentations import (
     GaussianBlur,
     Rotate,
 )
-
+from typing import Tuple
 from transforms.albu import IsotropicResize
 
 
 class DeepFakesDataset(Dataset):
-    def __init__(self, images, labels, image_size, sequence_length, mode="train"):
-        self.x = images
-        self.y = torch.from_numpy(labels)
+    def __init__(
+        self, data_root, labels_csv, image_size, sequence_length, mode="train"
+    ):
+        self.data_root = data_root
+        self.labels = pd.read_csv(labels_csv)
         self.image_size = image_size
+        self.sequence_length = sequence_length
         self.mode = mode
-        self.n_samples = images.shape[0]
+
+        # Obtener una lista de todas las subcarpetas (videos)
+        self.video_dirs = [
+            os.path.join(data_root, d)
+            for d in os.listdir(data_root)
+            if os.path.isdir(os.path.join(data_root, d))
+        ]
 
     def create_train_transforms(self, size):
+        additional_targets = {
+            f"image_{i+1}": f"image_{i+1}" for i in range(self.sequence_length - 1)
+        }
         return Compose(
             [
                 ImageCompression(quality_lower=60, quality_upper=100, p=0.2),
@@ -73,10 +86,14 @@ class DeepFakesDataset(Dataset):
                     border_mode=cv2.BORDER_CONSTANT,
                     p=0.5,
                 ),
-            ]
+            ],
+            additional_targets=additional_targets,
         )
 
     def create_val_transform(self, size):
+        additional_targets = {
+            f"image_{i+1}": f"image_{i+1}" for i in range(self.sequence_length - 1)
+        }
         return Compose(
             [
                 IsotropicResize(
@@ -87,25 +104,96 @@ class DeepFakesDataset(Dataset):
                 PadIfNeeded(
                     min_height=size, min_width=size, border_mode=cv2.BORDER_CONSTANT
                 ),
-            ]
+            ],
+            additional_targets=additional_targets,
         )
 
-    def __getitem__(self, index):
-        image = np.asarray(self.x[index])
+    def resize_with_pad(
+        self,
+        image,
+        new_shape,
+        padding_color: Tuple[int] = (255, 255, 255),
+    ) -> np.array:
+        """Maintains aspect ratio and resizes with padding.
+        Params:
+            image: Image to be resized.
+            new_shape: Expected (width, height) of new image.
+            padding_color: Tuple in BGR of padding color
+        Returns:
+            image: Resized image with padding
+        """
+        original_shape = (image.shape[1], image.shape[0])
+        ratio = float(max(new_shape)) / max(original_shape)
+        new_size = tuple([int(x * ratio) for x in original_shape])
+        image = cv2.resize(image, new_size)
+        delta_w = new_shape[0] - new_size[0]
+        delta_h = new_shape[1] - new_size[1]
+        top, bottom = delta_h // 2, delta_h - (delta_h // 2)
+        left, right = delta_w // 2, delta_w - (delta_w // 2)
+        image = cv2.copyMakeBorder(
+            image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=padding_color
+        )
+        return image
 
+    def __getitem__(self, index):
+        video_dir = self.video_dirs[index]
+        video_name = os.path.basename(video_dir) + ".mp4"
+        label = self.labels[self.labels["filename"] == video_name]["label"].values[0]
+
+        # Obtener los frames de la subcarpeta
+        frames = []
+
+        # aplicar transformaciones a nivel de frame
         if self.mode == "train":
             transform = self.create_train_transforms(self.image_size)
         else:
             transform = self.create_val_transform(self.image_size)
 
-        unique = uuid.uuid4()
-        # cv2.imwrite("../dataset/augmented_frames/isotropic_augmentation/"+str(unique)+"_"+str(index)+"_original.png", image)
+        for frame_file in sorted(os.listdir(video_dir)):
+            frame_path = os.path.join(video_dir, frame_file)
+            frame = cv2.imread(frame_path)
+            frame = self.resize_with_pad(frame, (self.image_size, self.image_size))
+            frames.append(frame)
 
-        image = transform(image=image)["image"]
+        # Crear una secuencia de frames aleatoria de tamaño sequence length
+        start_index = np.random.randint(0, len(frames) - sequence_length + 1)
+        sequence = frames[start_index : start_index + sequence_length]
 
-        # cv2.imwrite("../dataset/augmented_frames/isotropic_augmentation/"+str(unique)+"_"+str(index)+".png", image)
+        # Añadir padding si la secuencia es demasiado corta
+        if len(sequence) < self.sequence_length:
+            sequence.extend([sequence[-1]] * (self.sequence_length - len(sequence)))
+        sequence = np.stack(sequence)
 
-        return torch.tensor(image).float(), self.y[index]
+        # Transformacion de la secuencia
+        transformed_sequence = transform(
+            image=sequence[0],
+            image_1=sequence[1],
+            image_2=sequence[2],
+            image_3=sequence[3],
+            image_4=sequence[4],
+            image_5=sequence[5],
+            image_6=sequence[6],
+            image_7=sequence[7],
+            image_8=sequence[8],
+            image_9=sequence[9],
+        )
+
+        sequence = np.stack(
+            [
+                transformed_sequence["image"],
+                transformed_sequence["image_1"],
+                transformed_sequence["image_2"],
+                transformed_sequence["image_3"],
+                transformed_sequence["image_4"],
+                transformed_sequence["image_5"],
+                transformed_sequence["image_6"],
+                transformed_sequence["image_7"],
+                transformed_sequence["image_8"],
+                transformed_sequence["image_9"],
+            ]
+        )
+        # Aplica transformaciones a nivel de secuencia (opcional)
+        return torch.tensor(sequence).float(), torch.tensor(label).float()
 
     def __len__(self):
-        return self.n_samples
+        return len(self.video_dirs)

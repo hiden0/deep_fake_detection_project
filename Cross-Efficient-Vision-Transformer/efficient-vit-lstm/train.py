@@ -400,48 +400,48 @@ if __name__ == "__main__":
     train_dataset = mgr.list()
     validation_dataset = mgr.list()
 
-    with Pool(processes=opt.workers) as p:
-        with tqdm(total=len(paths)) as pbar:
-            for v in p.imap_unordered(
-                partial(
-                    read_video_sequences,
-                    sequence_length=3,
-                    train_dataset=train_dataset,
-                    validation_dataset=validation_dataset,
-                ),
-                paths,
-            ):
-                pbar.update()
+    # with Pool(processes=opt.workers) as p:
+    #     with tqdm(total=len(paths)) as pbar:
+    #         for v in p.imap_unordered(
+    #             partial(
+    #                 read_video_sequences,
+    #                 sequence_length=3,
+    #                 train_dataset=train_dataset,
+    #                 validation_dataset=validation_dataset,
+    #             ),
+    #             paths,
+    #         ):
+    #             pbar.update()
 
-    train_samples = len(train_dataset)
-    train_dataset = shuffle_dataset(train_dataset)
-    validation_samples = len(validation_dataset)
-    validation_dataset = shuffle_dataset(validation_dataset)
+    # train_samples = len(train_dataset)
+    # train_dataset = shuffle_dataset(train_dataset)
+    # validation_samples = len(validation_dataset)
+    # validation_dataset = shuffle_dataset(validation_dataset)
 
-    # Print some useful statistics
-    print(
-        "Train images:",
-        len(train_dataset),
-        "Validation images:",
-        len(validation_dataset),
-    )
-    print("__TRAINING STATS__")
-    train_counters = collections.Counter(image[1] for image in train_dataset)
-    print(train_counters)
+    # # Print some useful statistics
+    # print(
+    #     "Train images:",
+    #     len(train_dataset),
+    #     "Validation images:",
+    #     len(validation_dataset),
+    # )
+    # print("__TRAINING STATS__")
+    # train_counters = collections.Counter(image[1] for image in train_dataset)
+    # print(train_counters)
 
-    class_weights = train_counters[0] / train_counters[1]
-    print("Weights", class_weights)
+    # class_weights = train_counters[0] / train_counters[1]
+    # print("Weights", class_weights)
 
-    print("__VALIDATION STATS__")
-    val_counters = collections.Counter(image[1] for image in validation_dataset)
-    print(val_counters)
-    print("___________________")
+    # print("__VALIDATION STATS__")
+    # val_counters = collections.Counter(image[1] for image in validation_dataset)
+    # print(val_counters)
+    # print("___________________")
 
-    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
+    # loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
 
     # Create the data loaders
-    validation_labels = np.asarray([row[1] for row in validation_dataset])
-    labels = np.asarray([row[1] for row in train_dataset])
+    # validation_labels = np.asarray([row[1] for row in validation_dataset])
+    # labels = np.asarray([row[1] for row in train_dataset])
 
     # for row in range(len(train_dataset)):
     #     try:
@@ -449,20 +449,29 @@ if __name__ == "__main__":
     #     except:
     #         print("Error in row " + str(row))
 
+    # train_dataset = DeepFakesDataset(
+    #     # np.asarray(
+    #     #     [
+    #     #         np.resize(
+    #     #             row[0],
+    #     #             (config["model"]["image-size"], config["model"]["image-size"], 3),
+    #     #         )
+    #     #         for row in train_dataset
+    #     #     ]
+    #     # ),
+    #     np.asarray([row[0] for row in train_dataset]),
+    #     labels,
+    #     config["model"]["image-size"],
+    # )
+
     train_dataset = DeepFakesDataset(
-        # np.asarray(
-        #     [
-        #         np.resize(
-        #             row[0],
-        #             (config["model"]["image-size"], config["model"]["image-size"], 3),
-        #         )
-        #         for row in train_dataset
-        #     ]
-        # ),
-        np.asarray([row[0] for row in train_dataset]),
-        labels,
-        config["model"]["image-size"],
+        data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/complete_dataset/",
+        labels_csv="/srv/nvme/javber/deep_fake_detection_sample/dataset/metadata.csv",
+        image_size=config["model"]["image-size"],
+        sequence_length=10,
+        mode="train",
     )
+
     dl = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=config["training"]["bs"],
@@ -480,20 +489,29 @@ if __name__ == "__main__":
     )
     del train_dataset
 
+    # validation_dataset = DeepFakesDataset(
+    #     np.asarray(
+    #         [
+    #             np.resize(
+    #                 row[0],
+    #                 (config["model"]["image-size"], config["model"]["image-size"], 3),
+    #             )
+    #             for row in validation_dataset
+    #         ]
+    #     ),
+    #     validation_labels,
+    #     config["model"]["image-size"],
+    #     mode="validation",
+    # )
+
     validation_dataset = DeepFakesDataset(
-        np.asarray(
-            [
-                np.resize(
-                    row[0],
-                    (config["model"]["image-size"], config["model"]["image-size"], 3),
-                )
-                for row in validation_dataset
-            ]
-        ),
-        validation_labels,
-        config["model"]["image-size"],
-        mode="validation",
+        data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/validation_set/Deepfakes/",
+        labels_csv="/srv/nvme/javber/deep_fake_detection_sample/dataset/metadata.csv",
+        image_size=config["model"]["image-size"],
+        sequence_length=10,
+        mode="val",
     )
+
     val_dl = torch.utils.data.DataLoader(
         validation_dataset,
         batch_size=config["training"]["bs"],
@@ -529,8 +547,9 @@ if __name__ == "__main__":
         train_correct = 0
         positive = 0
         negative = 0
+        # images = np.transpose(images, (0, 3, 1, 2))
         for index, (images, labels) in enumerate(dl):
-            images = np.transpose(images, (0, 3, 1, 2))
+            # no transponemos nada, las dims son (batch_size, nframes, width, height, nchannels)
             labels = labels.unsqueeze(1)
             images = images.cuda()
 
