@@ -4,6 +4,7 @@ from einops import rearrange
 from efficientnet_pytorch import EfficientNet
 import cv2
 import re
+import torchvision.utils as vutils
 from utils import resize
 import numpy as np
 from torch import einsum
@@ -180,42 +181,122 @@ class EfficientViT(nn.Module):
         # )
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
-        self.to_cls_token = nn.Identity()
-        self.mlp_head = nn.Sequential(
-            nn.Linear(dim, mlp_dim), nn.ReLU(), nn.Linear(mlp_dim, num_classes)
+
+        self.lstm = nn.LSTM(
+            input_size=dim,
+            hidden_size=lstm_hidden_size,
+            num_layers=lstm_num_layers,
+            batch_first=True,
         )
 
-    def forward(self, img, mask=None):
+        # self.to_cls_token = nn.Identity()
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(lstm_hidden_size), nn.Linear(lstm_hidden_size, num_classes)
+        )
+
+    def forward(self, img_seq):
         p = self.patch_size
-        x = self.efficient_net.extract_features(img)  # 1280x7x7
-        # x = self.features(img)
-        """
-        for im in img:
-            image = im.cpu().detach().numpy()
-            image = np.transpose(image, (1,2,0))
-            cv2.imwrite("images/image"+str(randint(0,1000))+".png", image)
-        
-        x_scaled = []
-        for idx, im in enumerate(x):
-            im = im.cpu().detach().numpy()
-            for patch_idx, patch in enumerate(im):
-                patch = (255*(patch - np.min(patch))/np.ptp(patch)) 
-                im[patch_idx] = patch
-                #cv2.imwrite("patches/patches_"+str(idx)+"_"+str(patch_idx)+".png", patch)
-            x_scaled.append(im)
-        x = torch.tensor(x_scaled).cuda()   
-        """
 
-        # x2 = self.features(img)
-        y = rearrange(x, "b c (h p1) (w p2) -> b (h w) (p1 p2 c)", p1=p, p2=p)
-        # y2 = rearrange(x2, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = p, p2 = p)
-        y = self.patch_to_embedding(y)
-        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, y), 1)
-        shape = x.shape[0]
-        x += self.pos_embedding[0:shape]
-        x = self.dropout(x)
-        x = self.transformer(x)
-        x = self.to_cls_token(x[:, 0])
+        # Asumimos que img_seq es de forma (batch_size, seq_len, channels, height, width)
+        batch_size, seq_len, c, h, w = img_seq.shape
+        sequence_output = []
 
-        return self.mlp_head(x)
+        for t in range(seq_len):
+            img = img_seq[:, t, :, :, :]
+            # save_image(img[0], f"original_frame_{t}.png")
+            x = self.efficient_net.extract_features(img)
+            # save_embeddings(x, f"embeddings_frame_{t}")
+            y = rearrange(x, "b c (h p1) (w p2) -> b (h w) (p1 p2 c)", p1=p, p2=p)
+            y = self.patch_to_embedding(y)
+            cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+            x = torch.cat((cls_tokens, y), 1)
+            shape = x.shape[0]
+            x += self.pos_embedding[0:shape]
+            x = self.dropout(x)
+            x = self.transformer(x)
+            sequence_output.append(x[:, 0])
+
+        sequence_output = torch.stack(sequence_output, dim=1)
+
+        # Procesar la secuencia con LSTM
+        lstm_out, _ = self.lstm(sequence_output)
+
+        # Toma la última salida de LSTM para la clasificación final
+        out = lstm_out[:, -1, :]
+        return self.mlp_head(out)
+
+    # def forward(self, img, mask=None):
+    #     p = self.patch_size
+    #     x = self.efficient_net.extract_features(img)  # 1280x7x7
+    #     # x = self.features(img)
+    #     """
+    #     for im in img:
+    #         image = im.cpu().detach().numpy()
+    #         image = np.transpose(image, (1,2,0))
+    #         cv2.imwrite("images/image"+str(randint(0,1000))+".png", image)
+
+    #     x_scaled = []
+    #     for idx, im in enumerate(x):
+    #         im = im.cpu().detach().numpy()
+    #         for patch_idx, patch in enumerate(im):
+    #             patch = (255*(patch - np.min(patch))/np.ptp(patch))
+    #             im[patch_idx] = patch
+    #             #cv2.imwrite("patches/patches_"+str(idx)+"_"+str(patch_idx)+".png", patch)
+    #         x_scaled.append(im)
+    #     x = torch.tensor(x_scaled).cuda()
+    #     """
+
+    #     # x2 = self.features(img)
+    #     y = rearrange(x, "b c (h p1) (w p2) -> b (h w) (p1 p2 c)", p1=p, p2=p)
+    #     # y2 = rearrange(x2, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = p, p2 = p)
+    #     y = self.patch_to_embedding(y)
+    #     cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+    #     x = torch.cat((cls_tokens, y), 1)
+    #     shape = x.shape[0]
+    #     x += self.pos_embedding[0:shape]
+    #     x = self.dropout(x)
+    #     x = self.transformer(x)
+    #     x = self.to_cls_token(x[:, 0])
+
+    #     return self.mlp_head(x)
+
+
+import matplotlib.pyplot as plt
+import torchvision.transforms as transforms
+import numpy as np
+from PIL import Image
+
+
+# Función para guardar una imagen en PNG
+def save_image(tensor, filename):
+    img = tensor.permute(1, 2, 0).cpu().numpy()  # Cambiar de formato CHW a HWC
+    img = (img * 255).astype(np.uint8)  # Escalar los valores a [0, 255]
+    img = Image.fromarray(img)
+    img.save(filename)
+
+
+# Función para visualizar y guardar los embeddings como imagen
+def save_embeddings(embeddings, filename_prefix):
+    batch_size, num_embeddings, h, w = embeddings.shape
+
+    # Vamos a seleccionar 8 embeddings del batch
+    selected_embeddings = embeddings[0:8, :, :, :]  # Seleccionar 8 del batch
+
+    # Para cada embedding seleccionado, guardamos una imagen
+    for i in range(8):
+        embedding = selected_embeddings[i]
+
+        # Normalizamos el embedding para que esté entre [0, 1]
+        embedding = embedding - embedding.min()
+        embedding = embedding / embedding.max()
+
+        # Guardamos cada embedding como imagen
+        fig, ax = plt.subplots(figsize=(2, 2))
+        ax.imshow(
+            embedding[0].cpu().detach().numpy(), cmap="gray"
+        )  # Selecciona solo un canal
+        ax.axis("off")  # Elimina los ejes
+        plt.savefig(
+            f"{filename_prefix}_embedding_{i}.png", bbox_inches="tight", pad_inches=0
+        )
+        plt.close()

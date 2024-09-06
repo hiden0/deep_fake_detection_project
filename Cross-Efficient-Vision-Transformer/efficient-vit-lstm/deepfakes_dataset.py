@@ -155,16 +155,20 @@ class DeepFakesDataset(Dataset):
             frame = self.resize_with_pad(frame, (self.image_size, self.image_size))
             frames.append(frame)
 
+        # sequence = frames[: self.sequence_length]
         # Crear una secuencia de frames aleatoria de tamaño sequence length
-        start_index = np.random.randint(0, len(frames) - sequence_length + 1)
-        sequence = frames[start_index : start_index + sequence_length]
+        if len(frames) >= self.sequence_length:
+            start_index = np.random.randint(0, len(frames) - self.sequence_length + 1)
+            sequence = frames[start_index : start_index + self.sequence_length]
 
         # Añadir padding si la secuencia es demasiado corta
-        if len(sequence) < self.sequence_length:
+        else:
+            sequence = frames[: self.sequence_length]
             sequence.extend([sequence[-1]] * (self.sequence_length - len(sequence)))
         sequence = np.stack(sequence)
 
         # Transformacion de la secuencia
+        cv2.imwrite("preview_img.png", sequence[0])
         transformed_sequence = transform(
             image=sequence[0],
             image_1=sequence[1],
@@ -192,8 +196,31 @@ class DeepFakesDataset(Dataset):
                 transformed_sequence["image_9"],
             ]
         )
+        cv2.imwrite("post_img.png", sequence[0])
+        sequence = np.transpose(sequence, (0, 3, 1, 2))
         # Aplica transformaciones a nivel de secuencia (opcional)
         return torch.tensor(sequence).float(), torch.tensor(label).float()
 
     def __len__(self):
         return len(self.video_dirs)
+
+    def get_train_counters(self):
+        """
+        Cuenta el número de ceros y unos en una columna específica de un DataFrame.
+
+        Args:
+            dataframe: El DataFrame de Pandas.
+            columna: El nombre de la columna a analizar.
+
+        Returns:
+            Una lista con dos elementos: el número de ceros y el número de unos.
+        """
+
+        # Cuenta el número de ceros y unos utilizando value_counts() y luego convierte a una lista
+        value_counts = self.labels["label"].value_counts().tolist()
+
+        # Si solo hay una clase, agrega un cero para el valor que no está presente
+        if len(value_counts) == 1:
+            value_counts.append(0)
+
+        return value_counts

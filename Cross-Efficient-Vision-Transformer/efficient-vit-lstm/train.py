@@ -346,6 +346,15 @@ if __name__ == "__main__":
         lstm_hidden_size=opt.lstm_hidden_size,
         lstm_num_layers=opt.lstm_num_layers,
     )
+    ######################################
+    # from torchviz import make_dot
+
+    # x = torch.randn(1, 16, 3, 224, 224)  # batch_size=1, seq_len=16, 3 canales, 224x224
+    # output = model(x)
+    # dot = make_dot(output, params=dict(model.named_parameters()))
+    # dot.format = "svg"
+    # dot.render("efficient_vit_lstm_architecture")
+    ######################################
     model.train()
     transform = transforms.ToTensor()
     optimizer = torch.optim.SGD(
@@ -437,6 +446,7 @@ if __name__ == "__main__":
     # print(val_counters)
     # print("___________________")
 
+    # class_weights = train_counters[0] / train_counters[1]
     # loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
 
     # Create the data loaders
@@ -471,6 +481,10 @@ if __name__ == "__main__":
         sequence_length=10,
         mode="train",
     )
+    train_samples = train_dataset.__len__()
+    train_counters = train_dataset.get_train_counters()
+    class_weights = train_counters[0] / train_counters[1]
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
 
     dl = torch.utils.data.DataLoader(
         train_dataset,
@@ -511,6 +525,7 @@ if __name__ == "__main__":
         sequence_length=10,
         mode="val",
     )
+    validation_samples = validation_dataset.__len__()
 
     val_dl = torch.utils.data.DataLoader(
         validation_dataset,
@@ -595,25 +610,27 @@ if __name__ == "__main__":
         # Registro de las métricas de entrenamiento en TensorBoard
         writer.add_scalar("Loss/Train", total_loss, t)
         writer.add_scalar("Accuracy/Train", train_correct, t)
+        torch.cuda.empty_cache()
 
         for index, (val_images, val_labels) in enumerate(val_dl):
 
-            val_images = np.transpose(val_images, (0, 3, 1, 2))
+            # val_images = np.transpose(val_images, (0, 3, 1, 2))
 
             val_images = val_images.cuda()
             val_labels = val_labels.unsqueeze(1)
             val_pred = model(val_images)
-            val_pred = val_pred.cpu()
-            val_loss = loss_fn(val_pred, val_labels)
-            total_val_loss += round(val_loss.item(), 2)
-            corrects, positive_class, negative_class = check_correct(
-                val_pred, val_labels
-            )
-            val_correct += corrects
-            val_positive += positive_class
-            val_counter += 1
-            val_negative += negative_class
-            bar.next()
+            with torch.no_grad():
+                val_pred = val_pred.cpu()
+                val_loss = loss_fn(val_pred, val_labels)
+                total_val_loss += round(val_loss.item(), 2)
+                corrects, positive_class, negative_class = check_correct(
+                    val_pred, val_labels
+                )
+                val_correct += corrects
+                val_positive += positive_class
+                val_counter += 1
+                val_negative += negative_class
+                bar.next()
 
         scheduler.step()
         bar.finish()
@@ -646,11 +663,11 @@ if __name__ == "__main__":
             + " val_0s:"
             + str(val_negative)
             + "/"
-            + str(np.count_nonzero(validation_labels == 0))
+            # + str(np.count_nonzero(validation_labels == 0))
             + " val_1s:"
             + str(val_positive)
             + "/"
-            + str(np.count_nonzero(validation_labels == 1))
+            # + str(np.count_nonzero(validation_labels == 1))
         )
 
         if not os.path.exists(MODELS_PATH):
