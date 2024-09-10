@@ -23,6 +23,7 @@ from efficient_vit import EfficientViT
 import uuid
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score, roc_auc_score, confusion_matrix
 import cv2
 from transforms.albu import IsotropicResize
 import glob
@@ -48,98 +49,6 @@ METADATA_PATH = os.path.join(
     DATA_DIR, "metadata.json"
 )  # Folder containing all training metadata for DFDC dataset
 VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata.csv")
-
-
-# def read_frames(video_path, train_dataset, validation_dataset):
-
-#     # Get the video label based on dataset selected
-#     method = get_method(video_path, DATA_DIR)
-#     if TRAINING_DIR in video_path:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             for json_path in glob.glob(os.path.join(METADATA_PATH, "*.json")):
-#                 with open(json_path, "r") as f:
-#                     metadata = json.load(f)
-#                 video_folder_name = os.path.basename(video_path)
-#                 video_key = video_folder_name + ".mp4"
-#                 if video_key in metadata.keys():
-#                     item = metadata[video_key]
-#                     label = item.get("label", None)
-#                     if label == "FAKE":
-#                         label = 1.0
-#                     else:
-#                         label = 0.0
-#                     break
-#                 else:
-#                     label = None
-#         else:
-#             label = 1.0
-#         if label == None:
-#             print("NOT FOUND", video_path)
-#     else:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             val_df = pd.DataFrame(pd.read_csv(VALIDATION_LABELS_PATH))
-#             video_folder_name = os.path.basename(video_path)
-#             video_key = video_folder_name + ".mp4"
-#             label = val_df.loc[val_df["filename"] == video_key]["label"].values[0]
-#         else:
-#             label = 1.0
-
-#     # Calculate the interval to extract the frames
-#     frames_number = len(os.listdir(video_path))
-#     if label == 0:
-#         min_video_frames = max(
-#             int(
-#                 config["training"]["frames-per-video"]
-#                 * config["training"]["rebalancing_real"]
-#             ),
-#             1,
-#         )  # Compensate unbalancing
-#     else:
-#         min_video_frames = max(
-#             int(
-#                 config["training"]["frames-per-video"]
-#                 * config["training"]["rebalancing_fake"]
-#             ),
-#             1,
-#         )
-
-#     if VALIDATION_DIR in video_path:
-#         min_video_frames = int(max(min_video_frames / 8, 2))
-#     frames_interval = int(frames_number / min_video_frames)
-#     frames_paths = os.listdir(video_path)
-#     frames_paths_dict = {}
-
-#     # Group the faces with the same index, reduce probabiity to skip some faces in the same video
-#     for path in frames_paths:
-#         for i in range(0, 1):
-#             if "_" + str(i) in path:
-#                 if i not in frames_paths_dict.keys():
-#                     frames_paths_dict[i] = [path]
-#                 else:
-#                     frames_paths_dict[i].append(path)
-
-#     # Select only the frames at a certain interval
-#     if frames_interval > 0:
-#         for key in frames_paths_dict.keys():
-#             if len(frames_paths_dict) > frames_interval:
-#                 frames_paths_dict[key] = frames_paths_dict[key][::frames_interval]
-
-#             frames_paths_dict[key] = frames_paths_dict[key][:min_video_frames]
-
-#     # Select N frames from the collected ones
-#     for key in frames_paths_dict.keys():
-#         for index, frame_image in enumerate(frames_paths_dict[key]):
-#             # image = transform(np.asarray(cv2.imread(os.path.join(video_path, frame_image))))
-#             image = cv2.imread(os.path.join(video_path, frame_image))
-#             if image is not None:
-#                 if TRAINING_DIR in video_path:
-#                     train_dataset.append((image, label))
-#                 else:
-#                     validation_dataset.append((image, label))
 
 
 def read_video_sequences(
@@ -205,68 +114,6 @@ def read_video_sequences(
                 train_dataset.append((sequence_array, label))
             else:
                 validation_dataset.append((sequence_array, label))
-
-
-# def read_video_sequences(
-#     video_path, sequence_length, train_dataset, validation_dataset
-# ):
-#     # Get the video label based on dataset selected
-#     method = get_method(video_path, DATA_DIR)
-#     if TRAINING_DIR in video_path:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             for json_path in glob.glob(os.path.join(METADATA_PATH, "*.json")):
-#                 with open(json_path, "r") as f:
-#                     metadata = json.load(f)
-#                 video_folder_name = os.path.basename(video_path)
-#                 video_key = video_folder_name + ".mp4"
-#                 if video_key in metadata.keys():
-#                     item = metadata[video_key]
-#                     label = item.get("label", None)
-#                     if label == "FAKE":
-#                         label = 1.0
-#                     else:
-#                         label = 0.0
-#                     break
-#                 else:
-#                     label = None
-#         else:
-#             label = 1.0
-#         if label == None:
-#             print("NOT FOUND", video_path)
-#     else:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             val_df = pd.DataFrame(pd.read_csv(VALIDATION_LABELS_PATH))
-#             video_folder_name = os.path.basename(video_path)
-#             video_key = video_folder_name + ".mp4"
-#             label = val_df.loc[val_df["filename"] == video_key]["label"].values[0]
-#         else:
-#             label = 1.0
-
-#     # Leer todas las imágenes del video y redimensionarlas en una sola pasada
-#     frames_paths = sorted(os.listdir(video_path))
-#     images = []
-#     for frame_path in frames_paths:
-#         img = cv2.imread(frame_path)
-#         if img is not None:
-#             resized_img = cv2.resize(
-#                 img, (config["model"]["image_size"], config["model"]["image_size"])
-#             )
-#             images.append(resized_img)
-
-#     # Convertir la lista de imágenes a un array de NumPy
-#     images = np.array(images)
-
-#     # Crear secuencias
-#     for i in range(0, images.shape[0] - sequence_length + 1, sequence_length):
-#         sequence = images[i : i + sequence_length]
-#         if TRAINING_DIR in video_path:
-#             train_dataset.append((sequence, label))
-#         else:
-#             validation_dataset.append((sequence, label))
 
 
 # Main body
@@ -409,71 +256,6 @@ if __name__ == "__main__":
     train_dataset = mgr.list()
     validation_dataset = mgr.list()
 
-    # with Pool(processes=opt.workers) as p:
-    #     with tqdm(total=len(paths)) as pbar:
-    #         for v in p.imap_unordered(
-    #             partial(
-    #                 read_video_sequences,
-    #                 sequence_length=3,
-    #                 train_dataset=train_dataset,
-    #                 validation_dataset=validation_dataset,
-    #             ),
-    #             paths,
-    #         ):
-    #             pbar.update()
-
-    # train_samples = len(train_dataset)
-    # train_dataset = shuffle_dataset(train_dataset)
-    # validation_samples = len(validation_dataset)
-    # validation_dataset = shuffle_dataset(validation_dataset)
-
-    # # Print some useful statistics
-    # print(
-    #     "Train images:",
-    #     len(train_dataset),
-    #     "Validation images:",
-    #     len(validation_dataset),
-    # )
-    # print("__TRAINING STATS__")
-    # train_counters = collections.Counter(image[1] for image in train_dataset)
-    # print(train_counters)
-
-    # class_weights = train_counters[0] / train_counters[1]
-    # print("Weights", class_weights)
-
-    # print("__VALIDATION STATS__")
-    # val_counters = collections.Counter(image[1] for image in validation_dataset)
-    # print(val_counters)
-    # print("___________________")
-
-    # class_weights = train_counters[0] / train_counters[1]
-    # loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
-
-    # Create the data loaders
-    # validation_labels = np.asarray([row[1] for row in validation_dataset])
-    # labels = np.asarray([row[1] for row in train_dataset])
-
-    # for row in range(len(train_dataset)):
-    #     try:
-    #         np.asarray(train_dataset[row][0])
-    #     except:
-    #         print("Error in row " + str(row))
-
-    # train_dataset = DeepFakesDataset(
-    #     # np.asarray(
-    #     #     [
-    #     #         np.resize(
-    #     #             row[0],
-    #     #             (config["model"]["image-size"], config["model"]["image-size"], 3),
-    #     #         )
-    #     #         for row in train_dataset
-    #     #     ]
-    #     # ),
-    #     np.asarray([row[0] for row in train_dataset]),
-    #     labels,
-    #     config["model"]["image-size"],
-    # )
-
     train_dataset = DeepFakesDataset(
         data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/complete_dataset/",
         labels_csv="/srv/nvme/javber/deep_fake_detection_sample/dataset/metadata.csv",
@@ -502,21 +284,6 @@ if __name__ == "__main__":
         persistent_workers=False,
     )
     del train_dataset
-
-    # validation_dataset = DeepFakesDataset(
-    #     np.asarray(
-    #         [
-    #             np.resize(
-    #                 row[0],
-    #                 (config["model"]["image-size"], config["model"]["image-size"], 3),
-    #             )
-    #             for row in validation_dataset
-    #         ]
-    #     ),
-    #     validation_labels,
-    #     config["model"]["image-size"],
-    #     mode="validation",
-    # )
 
     validation_dataset = DeepFakesDataset(
         data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/validation_set/Deepfakes/",
@@ -604,6 +371,8 @@ if __name__ == "__main__":
         val_positive = 0
         val_negative = 0
         val_counter = 0
+        all_val_labels = []
+        all_val_preds = []
         train_correct /= train_samples
         total_loss /= counter
 
@@ -626,6 +395,9 @@ if __name__ == "__main__":
                 corrects, positive_class, negative_class = check_correct(
                     val_pred, val_labels
                 )
+                # Guardar las predicciones y etiquetas verdaderas para calcular métricas después
+                all_val_labels.extend(val_labels.cpu().numpy())
+                all_val_preds.extend(torch.sigmoid(val_pred).cpu().numpy())
                 val_correct += corrects
                 val_positive += positive_class
                 val_counter += 1
@@ -635,6 +407,30 @@ if __name__ == "__main__":
         scheduler.step()
         bar.finish()
 
+        # Después de la validación, calcular las métricas
+        all_val_labels = np.array(all_val_labels).astype(int)
+        all_val_preds = np.array(all_val_preds).round().astype(int)
+
+        # Calcular F1 score
+        f1 = f1_score(all_val_labels, all_val_preds)
+
+        # Calcular AUC (Área bajo la curva ROC)
+        #        auc = roc_auc_score(all_val_labels, all_val_preds)
+
+        # Calcular la matriz de confusión
+        tn, fp, fn, tp = confusion_matrix(all_val_labels, all_val_preds).ravel()
+
+        # Tasa de falsos positivos (FPR) y tasa de falsos negativos (FNR)
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+
+        # Registrar las métricas en TensorBoard
+        writer.add_scalar("Loss/Validation", total_val_loss / val_counter, t)
+        writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
+        writer.add_scalar("F1_Score/Validation", f1, t)
+        #        writer.add_scalar("AUC/Validation", auc, t)
+        writer.add_scalar("FPR/Validation", fpr, t)
+        writer.add_scalar("FNR/Validation", fnr, t)
         total_val_loss /= val_counter
         val_correct /= validation_samples
 
