@@ -39,16 +39,25 @@ import yaml
 import argparse
 
 
-BASE_DIR = "/srv/nvme/javber/deep_fake_detection_sample"
-DATA_DIR = os.path.join(BASE_DIR, "dataset")
-TRAINING_DIR = os.path.join(DATA_DIR, "training_set")
-VALIDATION_DIR = os.path.join(DATA_DIR, "validation_set")
-TEST_DIR = os.path.join(DATA_DIR, "test_set")
-MODELS_PATH = "models"
+# BASE_DIR = "/srv/nvme/javber/deep_fake_detection_sample"
+# DATA_DIR = os.path.join(BASE_DIR, "dataset")
+# TRAINING_DIR = os.path.join(DATA_DIR, "training_set")
+# VALIDATION_DIR = os.path.join(DATA_DIR, "validation_set")
+# TEST_DIR = os.path.join(DATA_DIR, "test_set")
+# MODELS_PATH = "models"
+# METADATA_PATH = os.path.join(
+#     DATA_DIR, "metadata.json"
+# )  # Folder containing all training metadata for DFDC dataset
+# VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata.csv")
+
+BASE_DIR = "/srv/hdd2/javber/dataset/"
+DATA_DIR = "/srv/hdd2/javber/dataset/"
+TRAINING_DIR = BASE_DIR + "train_set"
+VALIDATION_DIR = BASE_DIR + "validation_set"
 METADATA_PATH = os.path.join(
-    DATA_DIR, "metadata.json"
+    TRAINING_DIR, "metadata_combinado.json"
 )  # Folder containing all training metadata for DFDC dataset
-VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata.csv")
+VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
 
 
 def read_video_sequences(
@@ -242,23 +251,23 @@ if __name__ == "__main__":
     sets = [TRAINING_DIR, VALIDATION_DIR]
 
     paths = []
-    for dataset in sets:
-        for folder in folders:
-            subfolder = os.path.join(dataset, folder)
-            for index, video_folder_name in enumerate(os.listdir(subfolder)):
-                if index == opt.max_videos:
-                    break
+    # for dataset in sets:
+    #     for folder in folders:
+    #         subfolder = os.path.join(dataset, folder)
+    #         for index, video_folder_name in enumerate(os.listdir(subfolder)):
+    #             if index == opt.max_videos:
+    #                 break
 
-                if os.path.isdir(os.path.join(subfolder, video_folder_name)):
-                    paths.append(os.path.join(subfolder, video_folder_name))
+    #             if os.path.isdir(os.path.join(subfolder, video_folder_name)):
+    #                 paths.append(os.path.join(subfolder, video_folder_name))
 
-    mgr = Manager()
-    train_dataset = mgr.list()
-    validation_dataset = mgr.list()
+    # mgr = Manager()
+    # train_dataset = mgr.list()
+    # validation_dataset = mgr.list()
 
     train_dataset = DeepFakesDataset(
-        data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/complete_dataset/",
-        labels_csv="/srv/nvme/javber/deep_fake_detection_sample/dataset/metadata.csv",
+        data_root=TRAINING_DIR,
+        labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
         sequence_length=10,
         mode="train",
@@ -280,18 +289,20 @@ if __name__ == "__main__":
         drop_last=False,
         timeout=0,
         worker_init_fn=None,
-        prefetch_factor=2,
+        # prefetch_factor=None,
+        prefetch_factor=4,
         persistent_workers=False,
     )
     del train_dataset
 
     validation_dataset = DeepFakesDataset(
-        data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/validation_set/Deepfakes/",
-        labels_csv="/srv/nvme/javber/deep_fake_detection_sample/dataset/metadata.csv",
+        data_root=VALIDATION_DIR,
+        labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
         sequence_length=10,
         mode="val",
     )
+
     validation_samples = validation_dataset.__len__()
 
     val_dl = torch.utils.data.DataLoader(
@@ -306,7 +317,8 @@ if __name__ == "__main__":
         drop_last=False,
         timeout=0,
         worker_init_fn=None,
-        prefetch_factor=2,
+        prefetch_factor=4,
+        # prefetch_factor=None,
         persistent_workers=False,
     )
     del validation_dataset
@@ -332,8 +344,10 @@ if __name__ == "__main__":
         # images = np.transpose(images, (0, 3, 1, 2))
         for index, (images, labels) in enumerate(dl):
             # no transponemos nada, las dims son (batch_size, nframes, width, height, nchannels)
+            print(f"Iteration: {index}/{len(dl)}")
             labels = labels.unsqueeze(1)
             images = images.cuda()
+            # print(f"labels= {labels}")
 
             y_pred = model(images)
             y_pred = y_pred.cpu()

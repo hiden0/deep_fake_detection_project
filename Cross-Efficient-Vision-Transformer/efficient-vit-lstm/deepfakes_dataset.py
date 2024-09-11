@@ -22,6 +22,8 @@ from albumentations import (
 )
 from typing import Tuple
 from transforms.albu import IsotropicResize
+from PIL import Image
+from torchvision import transforms
 
 
 class DeepFakesDataset(Dataset):
@@ -34,12 +36,22 @@ class DeepFakesDataset(Dataset):
         self.sequence_length = sequence_length
         self.mode = mode
 
-        # Obtener una lista de todas las subcarpetas (videos)
-        self.video_dirs = [
-            os.path.join(data_root, d)
-            for d in os.listdir(data_root)
-            if os.path.isdir(os.path.join(data_root, d))
-        ]
+        # DESCOMENTAR SI TODOS LOS VIDEOS SE ENCUENTRAN EN UNA SOLA SUBCARPETA
+        # self.video_dirs = [
+        #     os.path.join(data_root, d)
+        #     for d in os.listdir(data_root)
+        #     if os.path.isdir(os.path.join(data_root, d))
+        # ]
+
+        # OPCION PARA CUANDO LOS VIDEOS SE ENCUENTRAN EN CARPETAS DIVIDIDAS EN 50 FRACCIONES
+        self.video_dirs = []
+        for subcarpeta in os.listdir(data_root):
+            ruta_subcarpeta = os.path.join(data_root, subcarpeta)
+            if os.path.isdir(ruta_subcarpeta):
+                for subsubcarpeta in os.listdir(ruta_subcarpeta):
+                    ruta_subsubcarpeta = os.path.join(ruta_subcarpeta, subsubcarpeta)
+                    if os.path.isdir(ruta_subsubcarpeta):
+                        self.video_dirs.append(ruta_subsubcarpeta)
 
     def create_train_transforms(self, size):
         additional_targets = {
@@ -138,7 +150,7 @@ class DeepFakesDataset(Dataset):
     def __getitem__(self, index):
         video_dir = self.video_dirs[index]
         video_name = os.path.basename(video_dir) + ".mp4"
-        label = self.labels[self.labels["filename"] == video_name]["label"].values[0]
+        label = self.labels[self.labels.iloc[:, 0] == video_name]["label"].values[0]
 
         # Obtener los frames de la subcarpeta
         frames = []
@@ -149,11 +161,18 @@ class DeepFakesDataset(Dataset):
         else:
             transform = self.create_val_transform(self.image_size)
 
+        # for frame_file in sorted(os.listdir(video_dir)):
+        #     frame_path = os.path.join(video_dir, frame_file)
+        #     frame = cv2.imread(frame_path)
+        #     frame = self.resize_with_pad(frame, (self.image_size, self.image_size))
+        #     frames.append(frame)
         for frame_file in sorted(os.listdir(video_dir)):
             frame_path = os.path.join(video_dir, frame_file)
-            frame = cv2.imread(frame_path)
-            frame = self.resize_with_pad(frame, (self.image_size, self.image_size))
-            frames.append(frame)
+            frame = Image.open(frame_path).convert("RGB")
+            frame = transforms.functional.resize(
+                frame, (self.image_size, self.image_size)
+            )
+            frames.append(np.array(frame))
 
         # sequence = frames[: self.sequence_length]
         # Crear una secuencia de frames aleatoria de tamaño sequence length
@@ -168,7 +187,7 @@ class DeepFakesDataset(Dataset):
         sequence = np.stack(sequence)
 
         # Transformacion de la secuencia
-        cv2.imwrite("preview_img.png", sequence[0])
+        # cv2.imwrite("preview_img.png", sequence[0])
         transformed_sequence = transform(
             image=sequence[0],
             image_1=sequence[1],
@@ -196,10 +215,14 @@ class DeepFakesDataset(Dataset):
                 transformed_sequence["image_9"],
             ]
         )
-        cv2.imwrite("post_img.png", sequence[0])
+        # cv2.imwrite("post_img.png", sequence[0])
         sequence = np.transpose(sequence, (0, 3, 1, 2))
         # Aplica transformaciones a nivel de secuencia (opcional)
-        return torch.tensor(sequence).float(), torch.tensor(label).float()
+        try:
+            return torch.tensor(sequence).float(), torch.tensor(label).float()
+
+        except:
+            print("e")
 
     def __len__(self):
         return len(self.video_dirs)
