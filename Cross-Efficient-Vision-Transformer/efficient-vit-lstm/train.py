@@ -290,10 +290,17 @@ if __name__ == "__main__":
         timeout=0,
         worker_init_fn=None,
         # prefetch_factor=None,
-        prefetch_factor=4,
+        prefetch_factor=2,
         persistent_workers=False,
     )
     del train_dataset
+
+    for batch_idx, data in enumerate(dl):
+        # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+        print("Checking data loader...")
+        print(f"Batch {batch_idx+1}/{len(dl)}")
+        # Por ejemplo, puedes imprimir las dimensiones de los datos:
+        # print(data.shape)
 
     validation_dataset = DeepFakesDataset(
         data_root=VALIDATION_DIR,

@@ -148,6 +148,7 @@ class DeepFakesDataset(Dataset):
         return image
 
     def __getitem__(self, index):
+
         video_dir = self.video_dirs[index]
         video_name = os.path.basename(video_dir) + ".mp4"
         label = self.labels[self.labels.iloc[:, 0] == video_name]["label"].values[0]
@@ -161,30 +162,65 @@ class DeepFakesDataset(Dataset):
         else:
             transform = self.create_val_transform(self.image_size)
 
+        ###########################################################################
         # for frame_file in sorted(os.listdir(video_dir)):
         #     frame_path = os.path.join(video_dir, frame_file)
         #     frame = cv2.imread(frame_path)
-        #     frame = self.resize_with_pad(frame, (self.image_size, self.image_size))
+        #     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convertir BGR a RGB
+        #     frame = cv2.resize(frame, (self.image_size, self.image_size))
         #     frames.append(frame)
-        for frame_file in sorted(os.listdir(video_dir)):
-            frame_path = os.path.join(video_dir, frame_file)
-            frame = Image.open(frame_path).convert("RGB")
-            frame = transforms.functional.resize(
-                frame, (self.image_size, self.image_size)
+
+        # # sequence = frames[: self.sequence_length]
+        # # Crear una secuencia de frames aleatoria de tamaño sequence length
+        # if len(frames) >= self.sequence_length:
+        #     start_index = np.random.randint(0, len(frames) - self.sequence_length + 1)
+        #     sequence = frames[start_index : start_index + self.sequence_length]
+
+        # # Añadir padding si la secuencia es demasiado corta
+        # else:
+        #     sequence = frames[: self.sequence_length]
+        #     sequence.extend([sequence[-1]] * (self.sequence_length - len(sequence)))
+        # sequence = np.stack(sequence)
+
+        # Obtener lista de archivos en el directorio de video
+        frame_files = sorted(os.listdir(video_dir))
+
+        # Comprobar si hay suficientes frames para una secuencia
+        if len(frame_files) >= self.sequence_length:
+            # Seleccionar un índice inicial aleatorio para los frames consecutivos
+            start_index = np.random.randint(
+                0, len(frame_files) - self.sequence_length + 1
             )
-            frames.append(np.array(frame))
+            selected_frame_files = frame_files[
+                start_index : start_index + self.sequence_length
+            ]
 
-        # sequence = frames[: self.sequence_length]
-        # Crear una secuencia de frames aleatoria de tamaño sequence length
-        if len(frames) >= self.sequence_length:
-            start_index = np.random.randint(0, len(frames) - self.sequence_length + 1)
-            sequence = frames[start_index : start_index + self.sequence_length]
+            # Procesar solo los frames seleccionados
+            sequence = []
+            for frame_file in selected_frame_files:
+                frame_path = os.path.join(video_dir, frame_file)
+                frame = cv2.imread(frame_path)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convertir BGR a RGB
+                frame = cv2.resize(frame, (self.image_size, self.image_size))
+                sequence.append(frame)
 
-        # Añadir padding si la secuencia es demasiado corta
         else:
-            sequence = frames[: self.sequence_length]
+            # Si hay menos frames que los necesarios, procesar todos los disponibles
+            sequence = []
+            for frame_file in frame_files:
+                frame_path = os.path.join(video_dir, frame_file)
+                frame = cv2.imread(frame_path)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convertir BGR a RGB
+                frame = cv2.resize(frame, (self.image_size, self.image_size))
+                sequence.append(frame)
+
+            # Añadir padding si no se alcanza el tamaño de la secuencia
             sequence.extend([sequence[-1]] * (self.sequence_length - len(sequence)))
+
+        # Convertir la lista de frames en un array numpy
         sequence = np.stack(sequence)
+
+        ######################################################
 
         # Transformacion de la secuencia
         # cv2.imwrite("preview_img.png", sequence[0])
