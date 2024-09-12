@@ -40,16 +40,9 @@ import yaml
 import argparse
 
 
-# BASE_DIR = "/srv/nvme/javber/deep_fake_detection_sample"
-# DATA_DIR = os.path.join(BASE_DIR, "dataset")
-# TRAINING_DIR = os.path.join(DATA_DIR, "training_set")
-# VALIDATION_DIR = os.path.join(DATA_DIR, "validation_set")
-# TEST_DIR = os.path.join(DATA_DIR, "test_set")
-# MODELS_PATH = "models"
-# METADATA_PATH = os.path.join(
-#     DATA_DIR, "metadata.json"
-# )  # Folder containing all training metadata for DFDC dataset
-# VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata.csv")
+"""
+##########################INN0403_CONFIG#########################
+
 
 BASE_DIR = "/srv/nvme/javber/dataset/"
 DATA_DIR = "/srv/nvme/javber/dataset/"
@@ -60,6 +53,22 @@ METADATA_PATH = os.path.join(
 )  # Folder containing all training metadata for DFDC dataset
 VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
 MODELS_PATH = "/srv/nvme/javber/models_save/"
+#################################################################
+"""
+
+##########################INN0763_CONFIG#########################
+
+
+BASE_DIR = "/srv/hdd2/javber/dataset/"
+DATA_DIR = "/srv/hdd2/javber/dataset/"
+TRAINING_DIR = BASE_DIR + "train_set"
+VALIDATION_DIR = BASE_DIR + "validation_set"
+METADATA_PATH = os.path.join(
+    TRAINING_DIR, "metadata_combinado.json"
+)  # Folder containing all training metadata for DFDC dataset
+VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
+MODELS_PATH = "/srv/hdd2/javber/dataset/models_save/"
+#################################################################
 
 
 def read_video_sequences(

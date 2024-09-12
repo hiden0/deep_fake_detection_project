@@ -1,7 +1,7 @@
 training:
   lr: 0.001
   weight-decay: 0.0000001
-  bs: 12
+  bs: 8
   scheduler: 'steplr'
   gamma: 0.1
   step-size: 15
@@ -17,7 +17,6 @@ model:
   depth: 6
   dim-head: 64
   heads: 8
-  lstm-dim: 2048
   mlp-dim: 2048
   emb-dim: 32
   dropout: 0.15
