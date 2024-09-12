@@ -17,7 +17,6 @@ model:
   depth: 6
   dim-head: 64
   heads: 8
-  lstm-dim: 2048
   mlp-dim: 2048
   emb-dim: 32
   dropout: 0.15

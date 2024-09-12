@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import os
+import re
 import uuid
 from albumentations import (
     Compose,
@@ -148,7 +149,7 @@ class DeepFakesDataset(Dataset):
         return image
 
     def __getitem__(self, index):
-
+        # try:
         video_dir = self.video_dirs[index]
         video_name = os.path.basename(video_dir) + ".mp4"
         label = self.labels[self.labels.iloc[:, 0] == video_name]["label"].values[0]
@@ -183,8 +184,8 @@ class DeepFakesDataset(Dataset):
         # sequence = np.stack(sequence)
 
         # Obtener lista de archivos en el directorio de video
-        frame_files = sorted(os.listdir(video_dir))
 
+        frame_files = sorted(os.listdir(video_dir), key=self.natural_sort_key)
         # Comprobar si hay suficientes frames para una secuencia
         if len(frame_files) >= self.sequence_length:
             # Seleccionar un índice inicial aleatorio para los frames consecutivos
@@ -256,9 +257,17 @@ class DeepFakesDataset(Dataset):
         # Aplica transformaciones a nivel de secuencia (opcional)
         try:
             return torch.tensor(sequence).float(), torch.tensor(label).float()
-
         except:
             print("e")
+
+        # except:
+        #     print("e")
+
+    def natural_sort_key(self, file_name):
+        return [
+            int(text) if text.isdigit() else text
+            for text in re.split(r"(\d+)", file_name)
+        ]
 
     def __len__(self):
         return len(self.video_dirs)

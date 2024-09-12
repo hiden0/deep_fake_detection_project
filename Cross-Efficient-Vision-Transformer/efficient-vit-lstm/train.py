@@ -12,6 +12,7 @@ import numpy as np
 from torch.optim import lr_scheduler
 import os
 import json
+import re
 from PIL import Image
 from os import cpu_count
 from multiprocessing.pool import Pool
@@ -50,14 +51,15 @@ import argparse
 # )  # Folder containing all training metadata for DFDC dataset
 # VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata.csv")
 
-BASE_DIR = "/srv/hdd2/javber/dataset/"
-DATA_DIR = "/srv/hdd2/javber/dataset/"
+BASE_DIR = "/srv/nvme/javber/dataset/"
+DATA_DIR = "/srv/nvme/javber/dataset/"
 TRAINING_DIR = BASE_DIR + "train_set"
 VALIDATION_DIR = BASE_DIR + "validation_set"
 METADATA_PATH = os.path.join(
     TRAINING_DIR, "metadata_combinado.json"
 )  # Folder containing all training metadata for DFDC dataset
 VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
+MODELS_PATH = "/srv/nvme/javber/models_save/"
 
 
 def read_video_sequences(
@@ -183,9 +185,12 @@ if __name__ == "__main__":
         default=5,
         help="How many epochs wait before stopping for validation loss not improving.",
     )
-    writer = SummaryWriter(log_dir=os.path.join(BASE_DIR, "runs"))
+
     opt = parser.parse_args()
     print(opt)
+    experiment_name = opt.config.split("/")[-1]
+    experiment_name = experiment_name.split(".")[0]
+    writer = SummaryWriter(log_dir=os.path.join(BASE_DIR, "runs", experiment_name))
 
     with open(opt.config, "r") as ymlfile:
         config = yaml.safe_load(ymlfile)
@@ -290,17 +295,18 @@ if __name__ == "__main__":
         timeout=0,
         worker_init_fn=None,
         # prefetch_factor=None,
-        prefetch_factor=2,
+        prefetch_factor=4,
         persistent_workers=False,
     )
     del train_dataset
-
+    """
     for batch_idx, data in enumerate(dl):
         # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
         print("Checking data loader...")
         print(f"Batch {batch_idx+1}/{len(dl)}")
         # Por ejemplo, puedes imprimir las dimensiones de los datos:
         # print(data.shape)
+    """
 
     validation_dataset = DeepFakesDataset(
         data_root=VALIDATION_DIR,
@@ -330,6 +336,13 @@ if __name__ == "__main__":
     )
     del validation_dataset
 
+    # for batch_idx, data in enumerate(val_dl):
+    #     # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+    #     print("Checking data loader...")
+    #     print(f"Batch {batch_idx+1}/{len(val_dl)}")
+    #     # Por ejemplo, puedes imprimir las dimensiones de los datos:
+    #     # print(data.shape)
+
     model = model.cuda()
     counter = 0
     not_improved_loss = 0
@@ -351,7 +364,7 @@ if __name__ == "__main__":
         # images = np.transpose(images, (0, 3, 1, 2))
         for index, (images, labels) in enumerate(dl):
             # no transponemos nada, las dims son (batch_size, nframes, width, height, nchannels)
-            print(f"Iteration: {index}/{len(dl)}")
+            # print(f"Iteration: {index}/{len(dl)}")
             labels = labels.unsqueeze(1)
             images = images.cuda()
             # print(f"labels= {labels}")
@@ -373,7 +386,8 @@ if __name__ == "__main__":
             counter += 1
             total_loss += round(loss.item(), 2)
 
-            if index % 1200 == 0:  # Intermediate metrics print
+            if index % 50 == 0:  # Intermediate metrics print
+                print(f"Iteration: {index}/{len(dl)}")
                 print(
                     "\nLoss: ",
                     total_loss / counter,
@@ -446,8 +460,10 @@ if __name__ == "__main__":
         fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
 
         # Registrar las métricas en TensorBoard
-        writer.add_scalar("Loss/Validation", total_val_loss / val_counter, t)
-        writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
+        # writer.add_scalar("Loss/Validation", total_val_loss / val_counter, t)
+        # writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
+        writer.add_scalar("Loss/Validation", total_val_loss, t)
+        writer.add_scalar("Accuracy/Validation", val_correct, t)
         writer.add_scalar("F1_Score/Validation", f1, t)
         #        writer.add_scalar("AUC/Validation", auc, t)
         writer.add_scalar("FPR/Validation", fpr, t)
@@ -455,8 +471,8 @@ if __name__ == "__main__":
         total_val_loss /= val_counter
         val_correct /= validation_samples
 
-        writer.add_scalar("Loss/Validation", total_val_loss, t)
-        writer.add_scalar("Accuracy/Validation", val_correct, t)
+        # writer.add_scalar("Loss/Validation", total_val_loss, t)
+        # writer.add_scalar("Accuracy/Validation", val_correct, t)
         if previous_loss <= total_val_loss:
             print("Validation loss did not improved")
             not_improved_loss += 1
@@ -499,6 +515,15 @@ if __name__ == "__main__":
                 + str(t)
                 + "_"
                 + opt.dataset,
+            ),
+        )
+
+        torch.save(
+            model.state_dict(),
+            os.path.join(
+                MODELS_PATH,
+                str(opt.config),
+                +"_checkpoint" + str(t) + "_" + opt.dataset,
             ),
         )
     writer.close()
