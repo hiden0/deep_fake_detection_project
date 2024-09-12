@@ -505,25 +505,13 @@ if __name__ == "__main__":
 
         if not os.path.exists(MODELS_PATH):
             os.makedirs(MODELS_PATH)
-        torch.save(
-            model.state_dict(),
-            os.path.join(
-                MODELS_PATH,
-                "efficientnetB"
-                + str(opt.efficient_net)
-                + "_checkpoint"
-                + str(t)
-                + "_"
-                + opt.dataset,
-            ),
-        )
 
         torch.save(
             model.state_dict(),
             os.path.join(
                 MODELS_PATH,
-                str(opt.config),
-                +"_checkpoint" + str(t) + "_" + opt.dataset,
+                experiment_name,
+                "_checkpoint_" + str(t),
             ),
         )
     writer.close()
