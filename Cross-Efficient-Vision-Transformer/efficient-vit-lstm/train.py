@@ -519,8 +519,7 @@ if __name__ == "__main__":
             model.state_dict(),
             os.path.join(
                 MODELS_PATH,
-                experiment_name,
-                "_checkpoint_" + str(t),
+                experiment_name + "_checkpoint_" + str(t),
             ),
         )
     writer.close()
