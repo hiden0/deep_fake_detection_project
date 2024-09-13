@@ -40,7 +40,6 @@ import yaml
 import argparse
 
 
-"""
 ##########################INN0403_CONFIG#########################
 
 
@@ -54,11 +53,11 @@ METADATA_PATH = os.path.join(
 VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
 MODELS_PATH = "/srv/nvme/javber/models_save/"
 #################################################################
-"""
+
 
 ##########################INN0763_CONFIG#########################
 
-
+"""
 BASE_DIR = "/srv/hdd2/javber/dataset/"
 DATA_DIR = "/srv/hdd2/javber/dataset/"
 TRAINING_DIR = BASE_DIR + "train_set"
@@ -68,6 +67,7 @@ METADATA_PATH = os.path.join(
 )  # Folder containing all training metadata for DFDC dataset
 VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
 MODELS_PATH = "/srv/hdd2/javber/dataset/models_save/"
+"""
 #################################################################
 
 
@@ -469,10 +469,10 @@ if __name__ == "__main__":
         fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
 
         # Registrar las métricas en TensorBoard
-        # writer.add_scalar("Loss/Validation", total_val_loss / val_counter, t)
-        # writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
-        writer.add_scalar("Loss/Validation", total_val_loss, t)
-        writer.add_scalar("Accuracy/Validation", val_correct, t)
+        writer.add_scalar("Loss/Validation", total_val_loss / val_counter, t)
+        writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
+        # writer.add_scalar("Loss/Validation", total_val_loss, t)
+        # writer.add_scalar("Accuracy/Validation", val_correct, t)
         writer.add_scalar("F1_Score/Validation", f1, t)
         #        writer.add_scalar("AUC/Validation", auc, t)
         writer.add_scalar("FPR/Validation", fpr, t)
