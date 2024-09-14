@@ -39,7 +39,8 @@ from deepfakes_dataset import DeepFakesDataset
 import math
 import yaml
 import argparse
-
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 ##########################INN0403_CONFIG#########################
 
@@ -456,21 +457,24 @@ if __name__ == "__main__":
         for index, (val_images, val_labels) in enumerate(val_dl):
 
             # val_images = np.transpose(val_images, (0, 3, 1, 2))
-
             val_images = val_images.cuda()
             val_labels = val_labels.unsqueeze(1)
             val_pred = model(val_images)
-
             with torch.no_grad():
-                val_pred = torch.sigmoid(val_pred)
+
                 val_pred = val_pred.cpu()
+
+                #
+
                 val_loss = loss_fn(val_pred, val_labels)
+
                 total_val_loss += round(val_loss.item(), 2)
                 #
 
                 corrects, positive_class, negative_class = check_correct(
                     val_pred, val_labels
                 )
+                val_pred = torch.sigmoid(val_pred)
                 # Guardar las predicciones y etiquetas verdaderas para calcular métricas después
                 all_val_labels.extend(val_labels.cpu().numpy())
                 all_val_preds.extend(val_pred.cpu().numpy())
@@ -484,6 +488,7 @@ if __name__ == "__main__":
         bar.finish()
 
         # Después de la validación, calcular las métricas
+
         all_val_labels = np.array(all_val_labels).astype(int)
         all_val_preds = np.array(all_val_preds).round().astype(int)
 
@@ -495,6 +500,18 @@ if __name__ == "__main__":
 
         # Calcular la matriz de confusión
         tn, fp, fn, tp = confusion_matrix(all_val_labels, all_val_preds).ravel()
+        conf_matrix = np.array([[tn, fp], [fn, tp]])
+        fig, ax = plt.subplots(figsize=(6, 6))
+        sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", cbar=False, ax=ax)
+        ax.set_xlabel("Predicted Labels")
+        ax.set_ylabel("True Labels")
+        ax.set_title("Confusion Matrix")
+
+        # Añadir la figura a TensorBoard
+        writer.add_figure("Confusion Matrix", fig, t)
+
+        # Cerrar la figura para liberar memoria
+        plt.close(fig)
         precision = precision_score(all_val_labels, all_val_preds)
         recall = recall_score(all_val_labels, all_val_preds)
 
@@ -513,8 +530,10 @@ if __name__ == "__main__":
         #        writer.add_scalar("AUC/Validation", auc, t)
         writer.add_scalar("FPR/Validation", fpr, t)
         writer.add_scalar("FNR/Validation", fnr, t)
-        total_val_loss /= val_counter
+        # total_val_loss /= val_counter
         val_correct /= validation_samples
+
+        # Convertir la matriz de confusión a una cadena
 
         # writer.add_scalar("Loss/Validation", total_val_loss, t)
         # writer.add_scalar("Accuracy/Validation", val_correct, t)
