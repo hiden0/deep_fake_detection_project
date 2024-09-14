@@ -24,6 +24,7 @@ from efficient_vit import EfficientViT
 import uuid
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import precision_score, recall_score
 from sklearn.metrics import f1_score, roc_auc_score, confusion_matrix
 import cv2
 from transforms.albu import IsotropicResize
@@ -345,12 +346,39 @@ if __name__ == "__main__":
     )
     del validation_dataset
 
-    # for batch_idx, data in enumerate(val_dl):
-    #     # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+    # for i in range(40):
+    #     ceros = 0
+    #     unos = 0
     #     print("Checking data loader...")
-    #     print(f"Batch {batch_idx+1}/{len(val_dl)}")
-    #     # Por ejemplo, puedes imprimir las dimensiones de los datos:
-    #     # print(data.shape)
+    #     for batch_idx, data in enumerate(dl):
+    #         # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+
+    #         if batch_idx % 50 == 0:
+    #             print(f"Batch {batch_idx+1}/{len(dl)}")
+    #         # print(data[1])
+    #         for dato in data[1]:
+    #             if int(dato) == 0:
+    #                 ceros += 1
+    #             elif int(dato) == 1:
+    #                 unos += 1
+    #         print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
+
+    # for i in range(40):
+    #     ceros = 0
+    #     unos = 0
+    #     print("Checking validation data loader...")
+    #     for batch_idx, data in enumerate(val_dl):
+    #         # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+
+    #         if batch_idx % 50 == 0:
+    #             print(f"Batch {batch_idx+1}/{len(val_dl)}")
+    #         # print(data[1])
+    #         for dato in data[1]:
+    #             if int(dato) == 0:
+    #                 ceros += 1
+    #             elif int(dato) == 1:
+    #                 unos += 1
+    #         print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
 
     model = model.cuda()
     counter = 0
@@ -432,16 +460,20 @@ if __name__ == "__main__":
             val_images = val_images.cuda()
             val_labels = val_labels.unsqueeze(1)
             val_pred = model(val_images)
+
             with torch.no_grad():
+                val_pred = torch.sigmoid(val_pred)
                 val_pred = val_pred.cpu()
                 val_loss = loss_fn(val_pred, val_labels)
                 total_val_loss += round(val_loss.item(), 2)
+                #
+
                 corrects, positive_class, negative_class = check_correct(
                     val_pred, val_labels
                 )
                 # Guardar las predicciones y etiquetas verdaderas para calcular métricas después
                 all_val_labels.extend(val_labels.cpu().numpy())
-                all_val_preds.extend(torch.sigmoid(val_pred).cpu().numpy())
+                all_val_preds.extend(val_pred.cpu().numpy())
                 val_correct += corrects
                 val_positive += positive_class
                 val_counter += 1
@@ -463,6 +495,8 @@ if __name__ == "__main__":
 
         # Calcular la matriz de confusión
         tn, fp, fn, tp = confusion_matrix(all_val_labels, all_val_preds).ravel()
+        precision = precision_score(all_val_labels, all_val_preds)
+        recall = recall_score(all_val_labels, all_val_preds)
 
         # Tasa de falsos positivos (FPR) y tasa de falsos negativos (FNR)
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
@@ -473,6 +507,8 @@ if __name__ == "__main__":
         writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
         # writer.add_scalar("Loss/Validation", total_val_loss, t)
         # writer.add_scalar("Accuracy/Validation", val_correct, t)
+        writer.add_scalar("Precision/Validation", precision, t)  # NUEVA LÍNEA
+        writer.add_scalar("Recall/Validation", recall, t)  # NUEVA LÍNE
         writer.add_scalar("F1_Score/Validation", f1, t)
         #        writer.add_scalar("AUC/Validation", auc, t)
         writer.add_scalar("FPR/Validation", fpr, t)
