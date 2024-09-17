@@ -186,9 +186,17 @@ class DeepFakesDataset(Dataset):
         # Obtener lista de archivos en el directorio de video
 
         frame_files = sorted(os.listdir(video_dir), key=self.natural_sort_key)
+        # filtered_frame_files = frame_files
+
+        filtered_frame_files = []
+
+        for index in range(len(frame_files)):
+            value = frame_files[index].split(".")[0].split("_")[1]
+            if value != "1":
+                filtered_frame_files.append(frame_files[index])
 
         # Comprobar si hay suficientes frames para una secuencia
-        if len(frame_files) >= self.sequence_length:
+        if len(filtered_frame_files) >= self.sequence_length:
             # Seleccionar un índice inicial aleatorio para los frames consecutivos
 
             #################BORRAR
@@ -206,9 +214,9 @@ class DeepFakesDataset(Dataset):
             ########################
 
             start_index = np.random.randint(
-                0, len(frame_files) - self.sequence_length + 1
+                0, len(filtered_frame_files) - self.sequence_length + 1
             )
-            selected_frame_files = frame_files[
+            selected_frame_files = filtered_frame_files[
                 start_index : start_index + self.sequence_length
             ]
 
@@ -249,7 +257,7 @@ class DeepFakesDataset(Dataset):
         else:
             # Si hay menos frames que los necesarios, procesar todos los disponibles
             sequence = []
-            for frame_file in frame_files:
+            for frame_file in filtered_frame_files:
                 frame_path = os.path.join(video_dir, frame_file)
                 frame = cv2.imread(frame_path)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convertir BGR a RGB
@@ -271,13 +279,8 @@ class DeepFakesDataset(Dataset):
             image=sequence[0],
             image_1=sequence[1],
             image_2=sequence[2],
-            image_3=sequence[3],
-            image_4=sequence[4],
-            image_5=sequence[5],
-            image_6=sequence[6],
-            image_7=sequence[7],
-            image_8=sequence[8],
-            image_9=sequence[9],
+            # image_3=sequence[3],
+            # image_4=sequence[4],
         )
 
         sequence = np.stack(
@@ -285,13 +288,8 @@ class DeepFakesDataset(Dataset):
                 transformed_sequence["image"],
                 transformed_sequence["image_1"],
                 transformed_sequence["image_2"],
-                transformed_sequence["image_3"],
-                transformed_sequence["image_4"],
-                transformed_sequence["image_5"],
-                transformed_sequence["image_6"],
-                transformed_sequence["image_7"],
-                transformed_sequence["image_8"],
-                transformed_sequence["image_9"],
+                # transformed_sequence["image_3"],
+                # transformed_sequence["image_4"],
             ]
         )
 

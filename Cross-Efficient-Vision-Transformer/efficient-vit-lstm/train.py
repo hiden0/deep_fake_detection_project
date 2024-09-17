@@ -43,7 +43,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 ##########################INN0403_CONFIG#########################
-
+"""
 
 BASE_DIR = "/srv/nvme/javber/dataset/"
 DATA_DIR = "/srv/nvme/javber/dataset/"
@@ -69,7 +69,7 @@ METADATA_PATH = os.path.join(
 )  # Folder containing all training metadata for DFDC dataset
 VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
 MODELS_PATH = "/srv/hdd2/javber/dataset/models_save/"
-"""
+
 #################################################################
 
 
@@ -229,7 +229,12 @@ if __name__ == "__main__":
     ######################################
     model.train()
     transform = transforms.ToTensor()
-    optimizer = torch.optim.SGD(
+    # optimizer = torch.optim.SGD(
+    #    model.parameters(),
+    #    lr=config["training"]["lr"],
+    #    weight_decay=config["training"]["weight-decay"],
+    # )
+    optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config["training"]["lr"],
         weight_decay=config["training"]["weight-decay"],
@@ -285,13 +290,11 @@ if __name__ == "__main__":
         data_root=TRAINING_DIR,
         labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
-        sequence_length=10,
+        sequence_length=3,
         mode="train",
     )
     train_samples = train_dataset.__len__()
-    train_counters = train_dataset.get_train_counters()
-    class_weights = train_counters[0] / train_counters[1]
-    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
+    # train_counters = train_dataset.get_train_counters()
 
     dl = torch.utils.data.DataLoader(
         train_dataset,
@@ -309,6 +312,24 @@ if __name__ == "__main__":
         prefetch_factor=4,
         persistent_workers=False,
     )
+    ceros = 20314
+    unos = 18044
+    # print("Checking data loader...")
+    # for batch_idx, data in enumerate(dl):
+    #     # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+
+    #     if batch_idx % 50 == 0:
+    #         print(f"Batch {batch_idx+1}/{len(dl)}")
+    #     # print(data[1])
+    #     for dato in data[1]:
+    #         if int(dato) == 0:
+    #             ceros += 1
+    #         elif int(dato) == 1:
+    #             unos += 1
+    #     print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
+    class_weights = ceros / unos
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
+
     del train_dataset
     """
     for batch_idx, data in enumerate(dl):
@@ -323,7 +344,7 @@ if __name__ == "__main__":
         data_root=VALIDATION_DIR,
         labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
-        sequence_length=10,
+        sequence_length=3,
         mode="val",
     )
 
@@ -347,7 +368,7 @@ if __name__ == "__main__":
     )
     del validation_dataset
 
-    # for i in range(40):
+    # for i in range(1):
     #     ceros = 0
     #     unos = 0
     #     print("Checking data loader...")
@@ -356,23 +377,6 @@ if __name__ == "__main__":
 
     #         if batch_idx % 50 == 0:
     #             print(f"Batch {batch_idx+1}/{len(dl)}")
-    #         # print(data[1])
-    #         for dato in data[1]:
-    #             if int(dato) == 0:
-    #                 ceros += 1
-    #             elif int(dato) == 1:
-    #                 unos += 1
-    #         print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
-
-    # for i in range(40):
-    #     ceros = 0
-    #     unos = 0
-    #     print("Checking validation data loader...")
-    #     for batch_idx, data in enumerate(val_dl):
-    #         # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
-
-    #         if batch_idx % 50 == 0:
-    #             print(f"Batch {batch_idx+1}/{len(val_dl)}")
     #         # print(data[1])
     #         for dato in data[1]:
     #             if int(dato) == 0:
@@ -399,6 +403,7 @@ if __name__ == "__main__":
         train_correct = 0
         positive = 0
         negative = 0
+
         # images = np.transpose(images, (0, 3, 1, 2))
         for index, (images, labels) in enumerate(dl):
             # no transponemos nada, las dims son (batch_size, nframes, width, height, nchannels)
