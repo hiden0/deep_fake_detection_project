@@ -1,196 +1,170 @@
-import matplotlib.pyplot as plt
-from sklearn import metrics
-from sklearn.metrics import auc
-from sklearn.metrics import accuracy_score
-import os
-import cv2
-import numpy as np
+from efficientnet_pytorch import EfficientNet
 import torch
+from torch.utils.data import DataLoader, TensorDataset, Dataset
+from einops import rearrange, repeat
 from torch import nn, einsum
-
-from sklearn.metrics import f1_score
-from albumentations import (
-    Compose,
-    RandomBrightnessContrast,
-    HorizontalFlip,
-    FancyPCA,
-    HueSaturationValue,
-    OneOf,
-    ToGray,
-    ShiftScaleRotate,
-    ImageCompression,
-    PadIfNeeded,
-    GaussNoise,
-    GaussianBlur,
-    Rotate,
-)
-
-from transforms.albu import IsotropicResize
-
-from utils import get_method, check_correct, resize, shuffle_dataset, get_n_params
+from torchvision import transforms
 import torch.nn as nn
 import torch.nn.functional as F
-from functools import partial
-from efficient_vit import EfficientViT
-from utils import transform_frame
-import glob
-from os import cpu_count
+from random import random, randint, choice
+from vit_pytorch import ViT
+import numpy as np
+from torch.optim import lr_scheduler
+import os
 import json
+import re
+from PIL import Image
+from os import cpu_count
 from multiprocessing.pool import Pool
-from progress.bar import Bar
+from functools import partial
+from torch.utils.tensorboard import SummaryWriter
+from multiprocessing import Manager
+from progress.bar import ChargingBar
+from efficient_vit import EfficientViT
+import uuid
+from torch.utils.data import DataLoader, TensorDataset, Dataset
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import precision_score, recall_score
+from sklearn.metrics import f1_score, roc_auc_score, confusion_matrix
+import cv2
+from transforms.albu import IsotropicResize
+import glob
 import pandas as pd
 from tqdm import tqdm
-from multiprocessing import Manager
-from utils import custom_round, custom_video_round
-
+from utils import get_method, check_correct, resize, shuffle_dataset, get_n_params
+from sklearn.utils.class_weight import compute_class_weight
+from torch.optim.lr_scheduler import LambdaLR
+import collections
+from deepfakes_dataset import DeepFakesDataset
+import math
 import yaml
 import argparse
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+##########################INN0403_CONFIG#########################
+"""
+
+BASE_DIR = "/srv/nvme/javber/dataset/"
+DATA_DIR = "/srv/nvme/javber/dataset/"
+TRAINING_DIR = BASE_DIR + "train_set"
+VALIDATION_DIR = BASE_DIR + "validation_set"
+METADATA_PATH = os.path.join(
+    TRAINING_DIR, "metadata_combinado.json"
+)  # Folder containing all training metadata for DFDC dataset
+VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
+MODELS_PATH = "/srv/nvme/javber/models_save/"
+#################################################################
 
 
-MODELS_DIR = "models"
-BASE_DIR = "/srv/nvme/javber/deep_fake_detection_sample"
-DATA_DIR = os.path.join(BASE_DIR, "dataset")
-TEST_DIR = os.path.join(DATA_DIR, "training_set")
-OUTPUT_DIR = os.path.join(MODELS_DIR, "tests")
+##########################INN0763_CONFIG#########################
 
-TEST_LABELS_PATH = os.path.join(BASE_DIR, "dataset/metadata.csv")
+"""
+BASE_DIR = "/srv/hdd2/javber/dataset/"
+DATA_DIR = "/srv/hdd2/javber/dataset/"
+TRAINING_DIR = BASE_DIR + "train_set"
+VALIDATION_DIR = BASE_DIR + "test_set"
+METADATA_PATH = os.path.join(
+    TRAINING_DIR, "metadata_combinado.json"
+)  # Folder containing all training metadata for DFDC dataset
+VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata_final.csv")
+MODELS_PATH = "/srv/hdd2/javber/dataset/models_save/"
 
-
-if not os.path.exists(MODELS_DIR):
-    os.makedirs(MODELS_DIR)
-
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
-
-
-def create_base_transform(size):
-    return Compose(
-        [
-            IsotropicResize(
-                max_side=size,
-                interpolation_down=cv2.INTER_AREA,
-                interpolation_up=cv2.INTER_CUBIC,
-            ),
-            PadIfNeeded(
-                min_height=size, min_width=size, border_mode=cv2.BORDER_CONSTANT
-            ),
-        ]
-    )
+#################################################################
 
 
-def save_roc_curves(correct_labels, preds, model_name, accuracy, loss, f1):
-    plt.figure(1)
-    plt.plot([0, 1], [0, 1], "k--")
-
-    fpr, tpr, th = metrics.roc_curve(correct_labels, preds)
-
-    model_auc = auc(fpr, tpr)
-
-    plt.plot(
-        fpr, tpr, label="Model_" + model_name + " (area = {:.3f})".format(model_auc)
-    )
-
-    plt.xlabel("False positive rate")
-    plt.ylabel("True positive rate")
-    plt.title("ROC curve")
-    plt.legend(loc="best")
-    plt.savefig(
-        os.path.join(
-            OUTPUT_DIR,
-            model_name
-            + "_"
-            + opt.dataset
-            + "_acc"
-            + str(accuracy * 100)
-            + "_loss"
-            + str(loss)
-            + "_f1"
-            + str(f1)
-            + ".jpg",
-        )
-    )
-    plt.clf()
-
-
-def read_frames(video_path, videos):
-
+def read_video_sequences(
+    video_path, sequence_length, train_dataset, validation_dataset
+):
     # Get the video label based on dataset selected
     method = get_method(video_path, DATA_DIR)
-    if "Original" in video_path:
-        label = 0.0
-    elif method == "DFDC":
-        test_df = pd.DataFrame(pd.read_csv(TEST_LABELS_PATH))
-        video_folder_name = os.path.basename(video_path)
-        video_key = video_folder_name + ".mp4"
-        label = test_df.loc[test_df["filename"] == video_key]["label"].values[0]
+    if TRAINING_DIR in video_path:
+        if "Original" in video_path:
+            label = 0.0
+        elif "DFDC" in video_path:
+            for json_path in glob.glob(os.path.join(METADATA_PATH, "*.json")):
+                with open(json_path, "r") as f:
+                    metadata = json.load(f)
+                video_folder_name = os.path.basename(video_path)
+                video_key = video_folder_name + ".mp4"
+                if video_key in metadata.keys():
+                    item = metadata[video_key]
+                    label = item.get("label", None)
+                    if label == "FAKE":
+                        label = 1.0
+                    else:
+                        label = 0.0
+                    break
+                else:
+                    label = None
+        else:
+            label = 1.0
+        if label == None:
+            print("NOT FOUND", video_path)
     else:
-        label = 1.0
+        if "Original" in video_path:
+            label = 0.0
+        elif "DFDC" in video_path:
+            val_df = pd.DataFrame(pd.read_csv(VALIDATION_LABELS_PATH))
+            video_folder_name = os.path.basename(video_path)
+            video_key = video_folder_name + ".mp4"
+            label = val_df.loc[val_df["filename"] == video_key]["label"].values[0]
+        else:
+            label = 1.0
 
-    # Calculate the interval to extract the frames
-    frames_number = len(os.listdir(video_path))
-    frames_interval = int(frames_number / opt.frames_per_video)
-    frames_paths = os.listdir(video_path)
-    frames_paths_dict = {}
+    # Read all frames of the video
+    frames_paths = sorted(os.listdir(video_path))
+    num_frames = len(frames_paths)
 
-    # Group the faces with the same index, reduce probabiity to skip some faces in the same video
-    for path in frames_paths:
-        for i in range(0, 3):
-            if "_" + str(i) in path:
-                if i not in frames_paths_dict.keys():
-                    frames_paths_dict[i] = [path]
-                else:
-                    frames_paths_dict[i].append(path)
+    # Group frames into sequences
+    for i in range(0, num_frames - sequence_length + 1, sequence_length):
+        sequence = []
+        for j in range(sequence_length):
+            frame_path = os.path.join(video_path, frames_paths[i + j])
+            image = cv2.imread(frame_path)
+            if image is not None:
+                image_resized = cv2.resize(
+                    image,
+                    (config["model"]["image-size"], config["model"]["image-size"]),
+                )
+                sequence.append(image_resized)
 
-    # Select only the frames at a certain interval
-    if frames_interval > 0:
-        for key in frames_paths_dict.keys():
-            if len(frames_paths_dict) > frames_interval:
-                frames_paths_dict[key] = frames_paths_dict[key][::frames_interval]
-
-            frames_paths_dict[key] = frames_paths_dict[key][: opt.frames_per_video]
-
-    # Select N frames from the collected ones
-    video = {}
-    for key in frames_paths_dict.keys():
-        for index, frame_image in enumerate(frames_paths_dict[key]):
-            # image = np.asarray(resize(cv2.imread(os.path.join(video_path, frame_image)), IMAGE_SIZE))
-            transform = create_base_transform(config["model"]["image-size"])
-            image = transform(image=cv2.imread(os.path.join(video_path, frame_image)))[
-                "image"
-            ]
-            if len(image) > 0:
-                if key in video:
-                    video[key].append(image)
-                else:
-                    video[key] = [image]
-    videos.append((video, label, video_path))
+        if len(sequence) == sequence_length:
+            # Convert the sequence to a NumPy array and add to the dataset
+            sequence_array = np.stack(sequence)
+            if TRAINING_DIR in video_path:
+                train_dataset.append((sequence_array, label))
+            else:
+                validation_dataset.append((sequence_array, label))
 
 
 # Main body
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-
+    parser.add_argument(
+        "--num_epochs", default=300, type=int, help="Number of training epochs."
+    )
     parser.add_argument(
         "--workers", default=10, type=int, help="Number of data loader workers."
     )
     parser.add_argument(
-        "--model_path",
+        "--resume",
         default="",
         type=str,
         metavar="PATH",
-        help="Path to model checkpoint (default: none).",
+        help="Path to latest checkpoint (default: none).",
     )
     parser.add_argument(
         "--dataset",
         type=str,
-        default="DFDC",
-        help="Which dataset to use (Deepfakes|Face2Face|FaceShifter|FaceSwap|NeuralTextures|DFDC)",
+        default="Deepfakes",
+        help="Which dataset to use (Deepfakes|Face2Face|FaceShifter|FaceSwap|NeuralTextures|All)",
     )
     parser.add_argument(
         "--max_videos",
         type=int,
-        default=-1,
+        default=10,
         help="Maximum number of videos to use for training (default: all).",
     )
     parser.add_argument(
@@ -205,17 +179,29 @@ if __name__ == "__main__":
         help="Which EfficientNet version to use (0 or 7, default: 0)",
     )
     parser.add_argument(
-        "--frames_per_video",
+        "--lstm_hidden_size",
         type=int,
-        default=30,
-        help="How many equidistant frames for each video (default: 30)",
+        default=256,
+        help="Size of the lstm hidden layers",
     )
     parser.add_argument(
-        "--batch_size", type=int, default=32, help="Batch size (default: 32)"
+        "--lstm_num_layers",
+        type=int,
+        default=1,
+        help="How many layers lstm should haver",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=5,
+        help="How many epochs wait before stopping for validation loss not improving.",
     )
 
     opt = parser.parse_args()
     print(opt)
+    experiment_name = opt.config.split("/")[-1]
+    experiment_name = experiment_name.split(".")[0]
+    writer = SummaryWriter(log_dir=os.path.join(BASE_DIR, "runs", experiment_name))
 
     with open(opt.config, "r") as ymlfile:
         config = yaml.safe_load(ymlfile)
@@ -225,104 +211,392 @@ if __name__ == "__main__":
     else:
         channels = 2560
 
-    if os.path.exists(opt.model_path):
-        model = EfficientViT(
-            config=config, channels=channels, selected_efficient_net=opt.efficient_net
-        )
-        model.load_state_dict(torch.load(opt.model_path))
-        model.eval()
-        model = model.cuda()
+    model = EfficientViT(
+        config=config,
+        channels=channels,
+        selected_efficient_net=opt.efficient_net,
+        lstm_hidden_size=opt.lstm_hidden_size,
+        lstm_num_layers=opt.lstm_num_layers,
+    )
+    ######################################
+    # from torchviz import make_dot
+
+    # x = torch.randn(1, 16, 3, 224, 224)  # batch_size=1, seq_len=16, 3 canales, 224x224
+    # output = model(x)
+    # dot = make_dot(output, params=dict(model.named_parameters()))
+    # dot.format = "svg"
+    # dot.render("efficient_vit_lstm_architecture")
+    ######################################
+    # model.train()
+    # transform = transforms.ToTensor()
+    # optimizer = torch.optim.SGD(
+    #    model.parameters(),
+    #    lr=config["training"]["lr"],
+    #    weight_decay=config["training"]["weight-decay"],
+    # )
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=config["training"]["lr"],
+        weight_decay=config["training"]["weight-decay"],
+    )
+    scheduler = lr_scheduler.StepLR(
+        optimizer,
+        step_size=config["training"]["step-size"],
+        gamma=config["training"]["gamma"],
+    )
+    starting_epoch = 0
+    if os.path.exists(opt.resume):
+        model.load_state_dict(torch.load(opt.resume))
+        starting_epoch = 0
+        # starting_epoch = (
+        #     int(opt.resume.split("checkpoint")[1].split("_")[0]) + 1
+        # )  # The checkpoint's file name format should be "checkpoint_EPOCH"
     else:
-        print("No model found.")
-        exit()
+        print("No checkpoint loaded.")
 
-    model_name = os.path.basename(opt.model_path)
+    print("Model Parameters:", get_n_params(model))
 
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
-
-    preds = []
-    mgr = Manager()
-    paths = []
-    videos = mgr.list()
-
-    if opt.dataset != "DFDC":
+    # READ DATASET
+    if opt.dataset != "All" and opt.dataset != "DFDC":
         folders = ["Original", opt.dataset]
     else:
-        folders = [opt.dataset]
+        folders = [
+            "Original",
+            "DFDC",
+            "Deepfakes",
+            "Face2Face",
+            "FaceShifter",
+            "FaceSwap",
+            "NeuralTextures",
+        ]
 
-    for folder in folders:
-        method_folder = os.path.join(TEST_DIR, folder)
-        for index, video_folder in enumerate(os.listdir(method_folder)):
-            paths.append(os.path.join(method_folder, video_folder))
+    sets = [TRAINING_DIR, VALIDATION_DIR]
 
-    with Pool(processes=opt.workers) as p:
-        with tqdm(total=len(paths)) as pbar:
-            for v in p.imap_unordered(partial(read_frames, videos=videos), paths):
-                pbar.update()
+    paths = []
+    # for dataset in sets:
+    #     for folder in folders:
+    #         subfolder = os.path.join(dataset, folder)
+    #         for index, video_folder_name in enumerate(os.listdir(subfolder)):
+    #             if index == opt.max_videos:
+    #                 break
 
-    video_names = np.asarray([row[2] for row in videos])
-    correct_test_labels = np.asarray([row[1] for row in videos])
-    videos = np.asarray([row[0] for row in videos])
-    preds = []
+    #             if os.path.isdir(os.path.join(subfolder, video_folder_name)):
+    #                 paths.append(os.path.join(subfolder, video_folder_name))
 
-    bar = Bar("Predicting", max=len(videos))
+    # mgr = Manager()
+    # train_dataset = mgr.list()
+    # validation_dataset = mgr.list()
 
-    f = open(opt.dataset + "_" + model_name + "_labels.txt", "w+")
-    for index, video in enumerate(videos):
-        video_faces_preds = []
-        video_name = video_names[index]
-        f.write(video_name)
-        for key in video:
-            faces_preds = []
-            video_faces = video[key]
-            for i in range(0, len(video_faces), opt.batch_size):
-                faces = video_faces[i : i + opt.batch_size]
-                faces = torch.tensor(np.asarray(faces))
-                if faces.shape[0] == 0:
-                    continue
-                faces = np.transpose(faces, (0, 3, 1, 2))
-                faces = faces.cuda().float()
+    # train_dataset = DeepFakesDataset(
+    #     data_root=TRAINING_DIR,
+    #     labels_csv=VALIDATION_LABELS_PATH,
+    #     image_size=config["model"]["image-size"],
+    #     sequence_length=5,
+    #     mode="train",
+    # )
+    # train_samples = train_dataset.__len__()
+    # # train_counters = train_dataset.get_train_counters()
 
-                pred = model(faces)
+    # dl = torch.utils.data.DataLoader(
+    #     train_dataset,
+    #     batch_size=config["training"]["bs"],
+    #     shuffle=True,
+    #     sampler=None,
+    #     batch_sampler=None,
+    #     num_workers=opt.workers,
+    #     collate_fn=None,
+    #     pin_memory=False,
+    #     drop_last=False,
+    #     timeout=0,
+    #     worker_init_fn=None,
+    #     # prefetch_factor=None,
+    #     prefetch_factor=4,
+    #     persistent_workers=False,
+    # )
+    # ceros = 20314
+    # unos = 18044
+    # ceros = 85887
+    # unos = 16538
+    # print("Checking data loader...")
+    # for batch_idx, data in enumerate(dl):
+    #     # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
 
-                scaled_pred = []
-                for idx, p in enumerate(pred):
-                    scaled_pred.append(torch.sigmoid(p))
-                faces_preds.extend(scaled_pred)
+    #     if batch_idx % 50 == 0:
+    #         print(f"Batch {batch_idx+1}/{len(dl)}")
 
-            current_faces_pred = sum(faces_preds) / len(faces_preds)
-            face_pred = current_faces_pred.cpu().detach().numpy()[0]
-            f.write(" " + str(face_pred))
-            video_faces_preds.append(face_pred)
-        bar.next()
-        if len(video_faces_preds) > 1:
-            video_pred = custom_video_round(video_faces_preds)
+    #     # print(data[1])
+    #     for dato in data[1]:
+    #         if int(dato) == 0:
+    #             ceros += 1
+    #         elif int(dato) == 1:
+    #             unos += 1
+    #     print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
+    ceros = 1
+    unos = 1
+    class_weights = ceros / unos
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
+
+    """
+    for batch_idx, data in enumerate(dl):
+        # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+        print("Checking data loader...")
+        print(f"Batch {batch_idx+1}/{len(dl)}")
+        # Por ejemplo, puedes imprimir las dimensiones de los datos:
+        # print(data.shape)
+    """
+
+    validation_dataset = DeepFakesDataset(
+        data_root=VALIDATION_DIR,
+        labels_csv=VALIDATION_LABELS_PATH,
+        image_size=config["model"]["image-size"],
+        sequence_length=5,
+        mode="val",
+    )
+    ceros = 0
+    unos = 0
+
+    validation_samples = validation_dataset.__len__()
+
+    val_dl = torch.utils.data.DataLoader(
+        validation_dataset,
+        batch_size=config["training"]["bs"],
+        shuffle=True,
+        sampler=None,
+        batch_sampler=None,
+        num_workers=opt.workers,
+        collate_fn=None,
+        pin_memory=False,
+        drop_last=False,
+        timeout=0,
+        worker_init_fn=None,
+        prefetch_factor=4,
+        # prefetch_factor=None,
+        persistent_workers=False,
+    )
+    del validation_dataset
+
+    # print("Checking data loader...")
+    # for batch_idx, data in enumerate(val_dl):
+    #     # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+
+    #     if batch_idx % 50 == 0:
+    #         print(f"Batch {batch_idx+1}/{len(val_dl)}")
+
+    #     # print(data[1])
+    #     for dato in data[1]:
+    #         if int(dato) == 0:
+    #             ceros += 1
+    #         elif int(dato) == 1:
+    #             unos += 1
+    #     print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
+
+    # for i in range(1):
+    #     ceros = 0
+    #     unos = 0
+    #     print("Checking data loader...")
+    #     for batch_idx, data in enumerate(dl):
+    #         # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+
+    #         if batch_idx % 50 == 0:
+    #             print(f"Batch {batch_idx+1}/{len(dl)}")
+    #         # print(data[1])
+    #         for dato in data[1]:
+    #             if int(dato) == 0:
+    #                 ceros += 1
+    #             elif int(dato) == 1:
+    #                 unos += 1
+    #         print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
+
+    model = model.cuda()
+    counter = 0
+    not_improved_loss = 0
+    previous_loss = math.inf
+    for t in range(starting_epoch, opt.num_epochs + 1):
+        if not_improved_loss == opt.patience:
+            break
+        counter = 0
+
+        total_loss = 0
+        total_val_loss = 0
+
+        train_correct = 0
+        positive = 0
+        negative = 0
+
+        # # images = np.transpose(images, (0, 3, 1, 2))
+        # for index, (images, labels) in enumerate(dl):
+        #     # no transponemos nada, las dims son (batch_size, nframes, width, height, nchannels)
+        #     # print(f"Iteration: {index}/{len(dl)}")
+        #     labels = labels.unsqueeze(1)
+        #     images = images.cuda()
+        #     # print(f"labels= {labels}")
+
+        #     y_pred = model(images)
+        #     y_pred = y_pred.cpu()
+
+        #     loss = loss_fn(y_pred, labels)
+
+        #     corrects, positive_class, negative_class = check_correct(y_pred, labels)
+        #     train_correct += corrects
+        #     positive += positive_class
+        #     negative += negative_class
+        #     optimizer.zero_grad()
+
+        #     loss.backward()
+
+        #     optimizer.step()
+        #     counter += 1
+        #     total_loss += round(loss.item(), 2)
+
+        #     if index % 50 == 0:  # Intermediate metrics print
+        #         print(f"Iteration: {index}/{len(dl)}")
+        #         print(
+        #             "\nLoss: ",
+        #             total_loss / counter,
+        #             "Accuracy: ",
+        #             train_correct / (counter * config["training"]["bs"]),
+        #             "Train 0s: ",
+        #             negative,
+        #             "Train 1s:",
+        #             positive,
+        #         )
+
+        #     for i in range(config["training"]["bs"]):
+        #         bar.next()
+
+        val_correct = 0
+        val_positive = 0
+        val_negative = 0
+        val_counter = 0
+        all_val_labels = []
+        all_val_preds = []
+
+        # # Registro de las métricas de entrenamiento en TensorBoard
+        # writer.add_scalar("Loss/Train", total_loss, t)
+        # writer.add_scalar("Accuracy/Train", train_correct, t)
+        # torch.cuda.empty_cache()
+
+        for index, (val_images, val_labels) in enumerate(val_dl):
+
+            # val_images = np.transpose(val_images, (0, 3, 1, 2))
+            val_images = val_images.cuda()
+            val_labels = val_labels.unsqueeze(1)
+            val_pred = model(val_images)
+            with torch.no_grad():
+
+                val_pred = val_pred.cpu()
+
+                #
+
+                val_loss = loss_fn(val_pred, val_labels)
+
+                total_val_loss += round(val_loss.item(), 2)
+                #
+
+                corrects, positive_class, negative_class = check_correct(
+                    val_pred, val_labels
+                )
+                val_pred = torch.sigmoid(val_pred)
+                # Guardar las predicciones y etiquetas verdaderas para calcular métricas después
+                all_val_labels.extend(val_labels.cpu().numpy())
+                all_val_preds.extend(val_pred.cpu().numpy())
+                val_correct += corrects
+                val_positive += positive_class
+                val_counter += 1
+                val_negative += negative_class
+                # bar.next()
+
+        scheduler.step()
+        # bar.finish()
+
+        # Después de la validación, calcular las métricas
+
+        all_val_labels = np.array(all_val_labels).astype(int)
+        all_val_preds = np.array(all_val_preds).round().astype(int)
+
+        # Calcular F1 score
+        f1 = f1_score(all_val_labels, all_val_preds)
+
+        # Calcular AUC (Área bajo la curva ROC)
+        #        auc = roc_auc_score(all_val_labels, all_val_preds)
+
+        # Calcular la matriz de confusión
+        tn, fp, fn, tp = confusion_matrix(all_val_labels, all_val_preds).ravel()
+        conf_matrix = np.array([[tn, fp], [fn, tp]])
+        fig, ax = plt.subplots(figsize=(6, 6))
+        sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", cbar=False, ax=ax)
+        ax.set_xlabel("Predicted Labels")
+        ax.set_ylabel("True Labels")
+        ax.set_title("Confusion Matrix")
+
+        # Añadir la figura a TensorBoard
+        writer.add_figure("Confusion Matrix", fig, t)
+
+        # Cerrar la figura para liberar memoria
+        plt.close(fig)
+        precision = precision_score(all_val_labels, all_val_preds)
+        recall = recall_score(all_val_labels, all_val_preds)
+
+        # Tasa de falsos positivos (FPR) y tasa de falsos negativos (FNR)
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+
+        # Registrar las métricas en TensorBoard
+        writer.add_scalar("Loss/Validation", total_val_loss / val_counter, t)
+        writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
+        # writer.add_scalar("Loss/Validation", total_val_loss, t)
+        # writer.add_scalar("Accuracy/Validation", val_correct, t)
+        writer.add_scalar("Precision/Validation", precision, t)  # NUEVA LÍNEA
+        writer.add_scalar("Recall/Validation", recall, t)  # NUEVA LÍNE
+        writer.add_scalar("F1_Score/Validation", f1, t)
+        #        writer.add_scalar("AUC/Validation", auc, t)
+        writer.add_scalar("FPR/Validation", fpr, t)
+        writer.add_scalar("FNR/Validation", fnr, t)
+        # total_val_loss /= val_counter
+        val_correct /= validation_samples
+
+        # Convertir la matriz de confusión a una cadena
+
+        # writer.add_scalar("Loss/Validation", total_val_loss, t)
+        # writer.add_scalar("Accuracy/Validation", val_correct, t)
+        if previous_loss <= total_val_loss:
+            print("Validation loss did not improved")
+            not_improved_loss += 1
         else:
-            video_pred = video_faces_preds[0]
-        preds.append([video_pred])
+            not_improved_loss = 0
 
-        f.write(
-            " --> "
-            + str(video_pred)
-            + "(CORRECT: "
-            + str(correct_test_labels[index])
-            + ")"
-            + "\n"
+        previous_loss = total_val_loss
+        print(
+            "#"
+            + str(t)
+            + "/"
+            + str(opt.num_epochs)
+            + " loss:"
+            + str(total_loss)
+            + " accuracy:"
+            + str(train_correct)
+            + " val_loss:"
+            + str(total_val_loss)
+            + " val_accuracy:"
+            + str(val_correct)
+            + " val_0s:"
+            + str(val_negative)
+            + "/"
+            # + str(np.count_nonzero(validation_labels == 0))
+            + " val_1s:"
+            + str(val_positive)
+            + "/"
+            # + str(np.count_nonzero(validation_labels == 1))
         )
 
-    f.close()
-    bar.finish()
+        if not os.path.exists(MODELS_PATH):
+            os.makedirs(MODELS_PATH)
 
-    loss_fn = torch.nn.BCEWithLogitsLoss()
-    tensor_labels = torch.tensor([[float(label)] for label in correct_test_labels])
-    tensor_preds = torch.tensor(preds)
-
-    loss = loss_fn(tensor_preds, tensor_labels).numpy()
-
-    # accuracy = accuracy_score(np.asarray(preds).round(), correct_test_labels)
-    accuracy = accuracy_score(custom_round(np.asarray(preds)), correct_test_labels)
-
-    f1 = f1_score(correct_test_labels, custom_round(np.asarray(preds)))
-    print(model_name, "Test Accuracy:", accuracy, "Loss:", loss, "F1", f1)
-    save_roc_curves(correct_test_labels, preds, model_name, accuracy, loss, f1)
+        torch.save(
+            model.state_dict(),
+            os.path.join(
+                MODELS_PATH,
+                experiment_name + "_checkpoint_" + str(t),
+            ),
+        )
+    writer.close()

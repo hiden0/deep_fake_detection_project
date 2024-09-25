@@ -290,7 +290,7 @@ if __name__ == "__main__":
         data_root=TRAINING_DIR,
         labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
-        sequence_length=3,
+        sequence_length=5,
         mode="train",
     )
     train_samples = train_dataset.__len__()
@@ -312,8 +312,10 @@ if __name__ == "__main__":
         prefetch_factor=4,
         persistent_workers=False,
     )
-    ceros = 20314
-    unos = 18044
+    # ceros = 20314
+    # unos = 18044
+    ceros = 85887
+    unos = 16538
     # print("Checking data loader...")
     # for batch_idx, data in enumerate(dl):
     #     # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
@@ -344,7 +346,7 @@ if __name__ == "__main__":
         data_root=VALIDATION_DIR,
         labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
-        sequence_length=3,
+        sequence_length=5,
         mode="val",
     )
 

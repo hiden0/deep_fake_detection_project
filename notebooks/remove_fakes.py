@@ -43,6 +43,6 @@ VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
 
 df = pd.read_csv(VALIDATION_LABELS_PATH)
 df = df.rename(columns={df.columns[0]: "name"})
-directorio = "/srv/hdd2/javber/dataset/train_set/dfdc_train_part_33/"  # Ajusta la ruta al directorio deseado
+directorio = "/srv/hdd2/javber/dataset/validation_set/dfdc_train_part_47/"  # Ajusta la ruta al directorio deseado
 
 eliminar_carpeta_por_nombre_columna(df, directorio)

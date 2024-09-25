@@ -150,154 +150,141 @@ class DeepFakesDataset(Dataset):
 
     def __getitem__(self, index):
 
-        video_dir = self.video_dirs[index]
-        video_name = os.path.basename(video_dir) + ".mp4"
-        label = self.labels[self.labels.iloc[:, 0] == video_name]["label"].values[0]
-
-        # Obtener los frames de la subcarpeta
-        frames = []
-
-        # aplicar transformaciones a nivel de frame
-        if self.mode == "train":
-            transform = self.create_train_transforms(self.image_size)
-        else:
-            transform = self.create_val_transform(self.image_size)
-
-        ###########################################################################
-        # for frame_file in sorted(os.listdir(video_dir)):
-        #     frame_path = os.path.join(video_dir, frame_file)
-        #     frame = cv2.imread(frame_path)
-        #     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convertir BGR a RGB
-        #     frame = cv2.resize(frame, (self.image_size, self.image_size))
-        #     frames.append(frame)
-
-        # # sequence = frames[: self.sequence_length]
-        # # Crear una secuencia de frames aleatoria de tamaño sequence length
-        # if len(frames) >= self.sequence_length:
-        #     start_index = np.random.randint(0, len(frames) - self.sequence_length + 1)
-        #     sequence = frames[start_index : start_index + self.sequence_length]
-
-        # # Añadir padding si la secuencia es demasiado corta
-        # else:
-        #     sequence = frames[: self.sequence_length]
-        #     sequence.extend([sequence[-1]] * (self.sequence_length - len(sequence)))
-        # sequence = np.stack(sequence)
-
-        # Obtener lista de archivos en el directorio de video
-
-        frame_files = sorted(os.listdir(video_dir), key=self.natural_sort_key)
-        # filtered_frame_files = frame_files
-
-        filtered_frame_files = []
-
-        for index in range(len(frame_files)):
-            value = frame_files[index].split(".")[0].split("_")[1]
-            if value != "1":
-                filtered_frame_files.append(frame_files[index])
-
-        # Comprobar si hay suficientes frames para una secuencia
-        if len(filtered_frame_files) >= self.sequence_length:
-            # Seleccionar un índice inicial aleatorio para los frames consecutivos
-
-            #################BORRAR
-            # try:
-            #     for frame_file in frame_files:
-            #         frame_path = os.path.join(video_dir, frame_file)
-            #         frame = cv2.imread(frame_path)
-            #         frame = cv2.cvtColor(
-            #             frame, cv2.COLOR_BGR2RGB
-            #         )  # Convertir BGR a RGB
-            #         frame = cv2.resize(frame, (self.image_size, self.image_size))
-            #         # sequence.append(frame)
-            # except e:
-            #     print(e)
-            ########################
-
-            start_index = np.random.randint(
-                0, len(filtered_frame_files) - self.sequence_length + 1
-            )
-            selected_frame_files = filtered_frame_files[
-                start_index : start_index + self.sequence_length
-            ]
-
-            # Procesar solo los frames seleccionados
-            sequence = []
-
-            for frame_file in selected_frame_files:
-                frame_path = os.path.join(video_dir, frame_file)
-                try:
-                    frame = cv2.imread(frame_path)
-                    frame = cv2.cvtColor(
-                        frame, cv2.COLOR_BGR2RGB
-                    )  # Convertir BGR a RGB
-                    frame = cv2.resize(frame, (self.image_size, self.image_size))
-                ### casos en los que existen frames vacios
-                except:
-                    frame_name = frame_path.split("/")[-1]
-                    frame_number = int(frame_name.split("_")[0])
-                    frame_index = frame_name.split("_")[1]
-
-                    if frame_file == selected_frame_files[0]:
-                        frame_number += 1
-                    else:
-                        frame_number -= 1
-                    frame_name = str(frame_number) + "_" + frame_index
-
-                    frame_path = os.path.join(video_dir, frame_name)
-                    frame = cv2.imread(frame_path)
-                    frame = cv2.cvtColor(
-                        frame, cv2.COLOR_BGR2RGB
-                    )  # Convertir BGR a RGB
-                    frame = cv2.resize(frame, (self.image_size, self.image_size))
-
-                sequence.append(frame)
-
-            ##############
-
-        else:
-            # Si hay menos frames que los necesarios, procesar todos los disponibles
-            sequence = []
-            for frame_file in filtered_frame_files:
-                frame_path = os.path.join(video_dir, frame_file)
-                frame = cv2.imread(frame_path)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convertir BGR a RGB
-                frame = cv2.resize(frame, (self.image_size, self.image_size))
-                sequence.append(frame)
-
-            # Añadir padding si no se alcanza el tamaño de la secuencia
-            sequence.extend([sequence[-1]] * (self.sequence_length - len(sequence)))
-
-        # Convertir la lista de frames en un array numpy
-        sequence = np.stack(sequence)
-
-        ######################################################
-
-        # Transformacion de la secuencia
-        # cv2.imwrite("preview_img.png", sequence[0])
-
-        transformed_sequence = transform(
-            image=sequence[0],
-            image_1=sequence[1],
-            image_2=sequence[2],
-            # image_3=sequence[3],
-            # image_4=sequence[4],
-        )
-
-        sequence = np.stack(
-            [
-                transformed_sequence["image"],
-                transformed_sequence["image_1"],
-                transformed_sequence["image_2"],
-                # transformed_sequence["image_3"],
-                # transformed_sequence["image_4"],
-            ]
-        )
-
-        # cv2.imwrite("post_img.png", sequence[0])
-        sequence = np.transpose(sequence, (0, 3, 1, 2))
-        # Aplica transformaciones a nivel de secuencia (opcional)
         try:
-            return torch.tensor(sequence).float(), torch.tensor(label).float()
+            video_dir = self.video_dirs[index]
+            video_name = os.path.basename(video_dir) + ".mp4"
+            label = self.labels[self.labels.iloc[:, 0] == video_name]["label"].values[0]
+
+            # Obtener los frames de la subcarpeta
+            frames = []
+
+            # aplicar transformaciones a nivel de frame
+            if self.mode == "train":
+                transform = self.create_train_transforms(self.image_size)
+            else:
+                transform = self.create_val_transform(self.image_size)
+
+            ###########################################################################
+
+            # Obtener lista de archivos en el directorio de video
+
+            frame_files = sorted(os.listdir(video_dir), key=self.natural_sort_key)
+            # filtered_frame_files = frame_files
+
+            filtered_frame_files = []
+
+            for index in range(len(frame_files)):
+                value = frame_files[index].split(".")[0].split("_")[1]
+                if value != "1":
+                    filtered_frame_files.append(frame_files[index])
+
+            # Comprobar si hay suficientes frames para una secuencia
+            if len(filtered_frame_files) >= self.sequence_length:
+                # Seleccionar un índice inicial aleatorio para los frames consecutivos
+
+                #################BORRAR
+                # try:
+                #     for frame_file in frame_files:
+                #         frame_path = os.path.join(video_dir, frame_file)
+                #         frame = cv2.imread(frame_path)
+                #         frame = cv2.cvtColor(
+                #             frame, cv2.COLOR_BGR2RGB
+                #         )  # Convertir BGR a RGB
+                #         frame = cv2.resize(frame, (self.image_size, self.image_size))
+                #         # sequence.append(frame)
+                # except e:
+                #     print(e)
+                ########################
+
+                start_index = np.random.randint(
+                    0, len(filtered_frame_files) - self.sequence_length + 1
+                )
+                selected_frame_files = filtered_frame_files[
+                    start_index : start_index + self.sequence_length
+                ]
+
+                # Procesar solo los frames seleccionados
+                sequence = []
+
+                for frame_file in selected_frame_files:
+                    frame_path = os.path.join(video_dir, frame_file)
+                    try:
+                        frame = cv2.imread(frame_path)
+                        frame = cv2.cvtColor(
+                            frame, cv2.COLOR_BGR2RGB
+                        )  # Convertir BGR a RGB
+                        frame = cv2.resize(frame, (self.image_size, self.image_size))
+                    ### casos en los que existen frames vacios
+                    except:
+                        frame_name = frame_path.split("/")[-1]
+                        frame_number = int(frame_name.split("_")[0])
+                        frame_index = frame_name.split("_")[1]
+
+                        if frame_file == selected_frame_files[0]:
+                            frame_number += 1
+                        else:
+                            frame_number -= 1
+                        frame_name = str(frame_number) + "_" + frame_index
+
+                        frame_path = os.path.join(video_dir, frame_name)
+                        frame = cv2.imread(frame_path)
+                        frame = cv2.cvtColor(
+                            frame, cv2.COLOR_BGR2RGB
+                        )  # Convertir BGR a RGB
+                        frame = cv2.resize(frame, (self.image_size, self.image_size))
+
+                    sequence.append(frame)
+
+                ##############
+
+            else:
+                # Si hay menos frames que los necesarios, procesar todos los disponibles
+                sequence = []
+                for frame_file in filtered_frame_files:
+                    frame_path = os.path.join(video_dir, frame_file)
+                    frame = cv2.imread(frame_path)
+                    frame = cv2.cvtColor(
+                        frame, cv2.COLOR_BGR2RGB
+                    )  # Convertir BGR a RGB
+                    frame = cv2.resize(frame, (self.image_size, self.image_size))
+                    sequence.append(frame)
+
+                # Añadir padding si no se alcanza el tamaño de la secuencia
+                sequence.extend([sequence[-1]] * (self.sequence_length - len(sequence)))
+
+            # Convertir la lista de frames en un array numpy
+            sequence = np.stack(sequence)
+
+            ######################################################
+
+            # Transformacion de la secuencia
+            # cv2.imwrite("preview_img.png", sequence[0])
+
+            transformed_sequence = transform(
+                image=sequence[0],
+                image_1=sequence[1],
+                image_2=sequence[2],
+                image_3=sequence[3],
+                image_4=sequence[4],
+            )
+
+            sequence = np.stack(
+                [
+                    transformed_sequence["image"],
+                    transformed_sequence["image_1"],
+                    transformed_sequence["image_2"],
+                    transformed_sequence["image_3"],
+                    transformed_sequence["image_4"],
+                ]
+            )
+
+            # cv2.imwrite("post_img.png", sequence[0])
+            sequence = np.transpose(sequence, (0, 3, 1, 2))
+            # Aplica transformaciones a nivel de secuencia (opcional)
+            try:
+                return torch.tensor(sequence).float(), torch.tensor(label).float()
+            except:
+                print("e")
         except:
             print("e")
 
