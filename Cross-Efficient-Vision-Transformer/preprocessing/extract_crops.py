@@ -99,8 +99,9 @@ def extract_video(video, root_dir, dataset):
                 )
         if counter == 0:
             print(video, counter)
-    except e:
-        print("Error:", e)
+    except:
+
+        print("Errorcillo pero tiramos adelante:")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ import numpy as np
 from torch.optim import lr_scheduler
 import os
 import json
+import re
 from PIL import Image
 from os import cpu_count
 from multiprocessing.pool import Pool
@@ -23,6 +24,8 @@ from efficient_vit import EfficientViT
 import uuid
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import precision_score, recall_score
+from sklearn.metrics import f1_score, roc_auc_score, confusion_matrix
 import cv2
 from transforms.albu import IsotropicResize
 import glob
@@ -36,110 +39,38 @@ from deepfakes_dataset import DeepFakesDataset
 import math
 import yaml
 import argparse
+import seaborn as sns
+import matplotlib.pyplot as plt
 
+##########################INN0403_CONFIG#########################
+"""
 
-BASE_DIR = "/srv/nvme/javber/deep_fake_detection_sample"
-DATA_DIR = os.path.join(BASE_DIR, "dataset")
-TRAINING_DIR = os.path.join(DATA_DIR, "training_set")
-VALIDATION_DIR = os.path.join(DATA_DIR, "validation_set")
-TEST_DIR = os.path.join(DATA_DIR, "test_set")
-MODELS_PATH = "models"
+BASE_DIR = "/srv/nvme/javber/dataset/"
+DATA_DIR = "/srv/nvme/javber/dataset/"
+TRAINING_DIR = BASE_DIR + "train_set"
+VALIDATION_DIR = BASE_DIR + "validation_set"
 METADATA_PATH = os.path.join(
-    DATA_DIR, "metadata.json"
+    TRAINING_DIR, "metadata_combinado.json"
 )  # Folder containing all training metadata for DFDC dataset
-VALIDATION_LABELS_PATH = os.path.join(BASE_DIR, "metadata.csv")
+VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
+MODELS_PATH = "/srv/nvme/javber/models_save/"
+#################################################################
 
 
-# def read_frames(video_path, train_dataset, validation_dataset):
+##########################INN0763_CONFIG#########################
 
-#     # Get the video label based on dataset selected
-#     method = get_method(video_path, DATA_DIR)
-#     if TRAINING_DIR in video_path:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             for json_path in glob.glob(os.path.join(METADATA_PATH, "*.json")):
-#                 with open(json_path, "r") as f:
-#                     metadata = json.load(f)
-#                 video_folder_name = os.path.basename(video_path)
-#                 video_key = video_folder_name + ".mp4"
-#                 if video_key in metadata.keys():
-#                     item = metadata[video_key]
-#                     label = item.get("label", None)
-#                     if label == "FAKE":
-#                         label = 1.0
-#                     else:
-#                         label = 0.0
-#                     break
-#                 else:
-#                     label = None
-#         else:
-#             label = 1.0
-#         if label == None:
-#             print("NOT FOUND", video_path)
-#     else:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             val_df = pd.DataFrame(pd.read_csv(VALIDATION_LABELS_PATH))
-#             video_folder_name = os.path.basename(video_path)
-#             video_key = video_folder_name + ".mp4"
-#             label = val_df.loc[val_df["filename"] == video_key]["label"].values[0]
-#         else:
-#             label = 1.0
+"""
+BASE_DIR = "/srv/hdd2/javber/dataset/"
+DATA_DIR = "/srv/hdd2/javber/dataset/"
+TRAINING_DIR = BASE_DIR + "train_set"
+VALIDATION_DIR = BASE_DIR + "validation_set"
+METADATA_PATH = os.path.join(
+    TRAINING_DIR, "metadata_combinado.json"
+)  # Folder containing all training metadata for DFDC dataset
+VALIDATION_LABELS_PATH = os.path.join(TRAINING_DIR, "metadata.csv")
+MODELS_PATH = "/srv/hdd2/javber/dataset/models_save/"
 
-#     # Calculate the interval to extract the frames
-#     frames_number = len(os.listdir(video_path))
-#     if label == 0:
-#         min_video_frames = max(
-#             int(
-#                 config["training"]["frames-per-video"]
-#                 * config["training"]["rebalancing_real"]
-#             ),
-#             1,
-#         )  # Compensate unbalancing
-#     else:
-#         min_video_frames = max(
-#             int(
-#                 config["training"]["frames-per-video"]
-#                 * config["training"]["rebalancing_fake"]
-#             ),
-#             1,
-#         )
-
-#     if VALIDATION_DIR in video_path:
-#         min_video_frames = int(max(min_video_frames / 8, 2))
-#     frames_interval = int(frames_number / min_video_frames)
-#     frames_paths = os.listdir(video_path)
-#     frames_paths_dict = {}
-
-#     # Group the faces with the same index, reduce probabiity to skip some faces in the same video
-#     for path in frames_paths:
-#         for i in range(0, 1):
-#             if "_" + str(i) in path:
-#                 if i not in frames_paths_dict.keys():
-#                     frames_paths_dict[i] = [path]
-#                 else:
-#                     frames_paths_dict[i].append(path)
-
-#     # Select only the frames at a certain interval
-#     if frames_interval > 0:
-#         for key in frames_paths_dict.keys():
-#             if len(frames_paths_dict) > frames_interval:
-#                 frames_paths_dict[key] = frames_paths_dict[key][::frames_interval]
-
-#             frames_paths_dict[key] = frames_paths_dict[key][:min_video_frames]
-
-#     # Select N frames from the collected ones
-#     for key in frames_paths_dict.keys():
-#         for index, frame_image in enumerate(frames_paths_dict[key]):
-#             # image = transform(np.asarray(cv2.imread(os.path.join(video_path, frame_image))))
-#             image = cv2.imread(os.path.join(video_path, frame_image))
-#             if image is not None:
-#                 if TRAINING_DIR in video_path:
-#                     train_dataset.append((image, label))
-#                 else:
-#                     validation_dataset.append((image, label))
+#################################################################
 
 
 def read_video_sequences(
@@ -207,68 +138,6 @@ def read_video_sequences(
                 validation_dataset.append((sequence_array, label))
 
 
-# def read_video_sequences(
-#     video_path, sequence_length, train_dataset, validation_dataset
-# ):
-#     # Get the video label based on dataset selected
-#     method = get_method(video_path, DATA_DIR)
-#     if TRAINING_DIR in video_path:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             for json_path in glob.glob(os.path.join(METADATA_PATH, "*.json")):
-#                 with open(json_path, "r") as f:
-#                     metadata = json.load(f)
-#                 video_folder_name = os.path.basename(video_path)
-#                 video_key = video_folder_name + ".mp4"
-#                 if video_key in metadata.keys():
-#                     item = metadata[video_key]
-#                     label = item.get("label", None)
-#                     if label == "FAKE":
-#                         label = 1.0
-#                     else:
-#                         label = 0.0
-#                     break
-#                 else:
-#                     label = None
-#         else:
-#             label = 1.0
-#         if label == None:
-#             print("NOT FOUND", video_path)
-#     else:
-#         if "Original" in video_path:
-#             label = 0.0
-#         elif "DFDC" in video_path:
-#             val_df = pd.DataFrame(pd.read_csv(VALIDATION_LABELS_PATH))
-#             video_folder_name = os.path.basename(video_path)
-#             video_key = video_folder_name + ".mp4"
-#             label = val_df.loc[val_df["filename"] == video_key]["label"].values[0]
-#         else:
-#             label = 1.0
-
-#     # Leer todas las imágenes del video y redimensionarlas en una sola pasada
-#     frames_paths = sorted(os.listdir(video_path))
-#     images = []
-#     for frame_path in frames_paths:
-#         img = cv2.imread(frame_path)
-#         if img is not None:
-#             resized_img = cv2.resize(
-#                 img, (config["model"]["image_size"], config["model"]["image_size"])
-#             )
-#             images.append(resized_img)
-
-#     # Convertir la lista de imágenes a un array de NumPy
-#     images = np.array(images)
-
-#     # Crear secuencias
-#     for i in range(0, images.shape[0] - sequence_length + 1, sequence_length):
-#         sequence = images[i : i + sequence_length]
-#         if TRAINING_DIR in video_path:
-#             train_dataset.append((sequence, label))
-#         else:
-#             validation_dataset.append((sequence, label))
-
-
 # Main body
 if __name__ == "__main__":
 
@@ -295,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_videos",
         type=int,
-        default=10,
+        default=all,
         help="Maximum number of videos to use for training (default: all).",
     )
     parser.add_argument(
@@ -327,9 +196,12 @@ if __name__ == "__main__":
         default=5,
         help="How many epochs wait before stopping for validation loss not improving.",
     )
-    writer = SummaryWriter(log_dir=os.path.join(BASE_DIR, "runs"))
+
     opt = parser.parse_args()
     print(opt)
+    experiment_name = opt.config.split("/")[-1]
+    experiment_name = experiment_name.split(".")[0]
+    writer = SummaryWriter(log_dir=os.path.join(BASE_DIR, "runs", experiment_name))
 
     with open(opt.config, "r") as ymlfile:
         config = yaml.safe_load(ymlfile)
@@ -357,7 +229,12 @@ if __name__ == "__main__":
     ######################################
     model.train()
     transform = transforms.ToTensor()
-    optimizer = torch.optim.SGD(
+    # optimizer = torch.optim.SGD(
+    #    model.parameters(),
+    #    lr=config["training"]["lr"],
+    #    weight_decay=config["training"]["weight-decay"],
+    # )
+    optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config["training"]["lr"],
         weight_decay=config["training"]["weight-decay"],
@@ -395,96 +272,29 @@ if __name__ == "__main__":
     sets = [TRAINING_DIR, VALIDATION_DIR]
 
     paths = []
-    for dataset in sets:
-        for folder in folders:
-            subfolder = os.path.join(dataset, folder)
-            for index, video_folder_name in enumerate(os.listdir(subfolder)):
-                if index == opt.max_videos:
-                    break
+    # for dataset in sets:
+    #     for folder in folders:
+    #         subfolder = os.path.join(dataset, folder)
+    #         for index, video_folder_name in enumerate(os.listdir(subfolder)):
+    #             if index == opt.max_videos:
+    #                 break
 
-                if os.path.isdir(os.path.join(subfolder, video_folder_name)):
-                    paths.append(os.path.join(subfolder, video_folder_name))
+    #             if os.path.isdir(os.path.join(subfolder, video_folder_name)):
+    #                 paths.append(os.path.join(subfolder, video_folder_name))
 
-    mgr = Manager()
-    train_dataset = mgr.list()
-    validation_dataset = mgr.list()
-
-    # with Pool(processes=opt.workers) as p:
-    #     with tqdm(total=len(paths)) as pbar:
-    #         for v in p.imap_unordered(
-    #             partial(
-    #                 read_video_sequences,
-    #                 sequence_length=3,
-    #                 train_dataset=train_dataset,
-    #                 validation_dataset=validation_dataset,
-    #             ),
-    #             paths,
-    #         ):
-    #             pbar.update()
-
-    # train_samples = len(train_dataset)
-    # train_dataset = shuffle_dataset(train_dataset)
-    # validation_samples = len(validation_dataset)
-    # validation_dataset = shuffle_dataset(validation_dataset)
-
-    # # Print some useful statistics
-    # print(
-    #     "Train images:",
-    #     len(train_dataset),
-    #     "Validation images:",
-    #     len(validation_dataset),
-    # )
-    # print("__TRAINING STATS__")
-    # train_counters = collections.Counter(image[1] for image in train_dataset)
-    # print(train_counters)
-
-    # class_weights = train_counters[0] / train_counters[1]
-    # print("Weights", class_weights)
-
-    # print("__VALIDATION STATS__")
-    # val_counters = collections.Counter(image[1] for image in validation_dataset)
-    # print(val_counters)
-    # print("___________________")
-
-    # class_weights = train_counters[0] / train_counters[1]
-    # loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
-
-    # Create the data loaders
-    # validation_labels = np.asarray([row[1] for row in validation_dataset])
-    # labels = np.asarray([row[1] for row in train_dataset])
-
-    # for row in range(len(train_dataset)):
-    #     try:
-    #         np.asarray(train_dataset[row][0])
-    #     except:
-    #         print("Error in row " + str(row))
-
-    # train_dataset = DeepFakesDataset(
-    #     # np.asarray(
-    #     #     [
-    #     #         np.resize(
-    #     #             row[0],
-    #     #             (config["model"]["image-size"], config["model"]["image-size"], 3),
-    #     #         )
-    #     #         for row in train_dataset
-    #     #     ]
-    #     # ),
-    #     np.asarray([row[0] for row in train_dataset]),
-    #     labels,
-    #     config["model"]["image-size"],
-    # )
+    # mgr = Manager()
+    # train_dataset = mgr.list()
+    # validation_dataset = mgr.list()
 
     train_dataset = DeepFakesDataset(
-        data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/complete_dataset/",
-        labels_csv="/srv/nvme/javber/deep_fake_detection_sample/dataset/metadata.csv",
+        data_root=TRAINING_DIR,
+        labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
         sequence_length=10,
         mode="train",
     )
     train_samples = train_dataset.__len__()
-    train_counters = train_dataset.get_train_counters()
-    class_weights = train_counters[0] / train_counters[1]
-    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
+    # train_counters = train_dataset.get_train_counters()
 
     dl = torch.utils.data.DataLoader(
         train_dataset,
@@ -498,33 +308,50 @@ if __name__ == "__main__":
         drop_last=False,
         timeout=0,
         worker_init_fn=None,
-        prefetch_factor=2,
+        # prefetch_factor=None,
+        prefetch_factor=4,
         persistent_workers=False,
     )
-    del train_dataset
+    # ceros = 20314
+    # unos = 18044
+    ceros = 85887
+    unos = 16538
+    # print("Checking data loader...")
+    # for batch_idx, data in enumerate(dl):
+    #     # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
 
-    # validation_dataset = DeepFakesDataset(
-    #     np.asarray(
-    #         [
-    #             np.resize(
-    #                 row[0],
-    #                 (config["model"]["image-size"], config["model"]["image-size"], 3),
-    #             )
-    #             for row in validation_dataset
-    #         ]
-    #     ),
-    #     validation_labels,
-    #     config["model"]["image-size"],
-    #     mode="validation",
-    # )
+    #     if batch_idx % 50 == 0:
+    #         print(f"Batch {batch_idx+1}/{len(dl)}")
+    #     # print(data[1])
+    #     for dato in data[1]:
+    #         if int(dato) == 0:
+    #             ceros += 1
+    #         elif int(dato) == 1:
+    #             unos += 1
+    #     print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
+    class_weights = ceros / unos
+
+    class_weights = 1
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
+
+    del train_dataset
+    """
+    for batch_idx, data in enumerate(dl):
+        # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+        print("Checking data loader...")
+        print(f"Batch {batch_idx+1}/{len(dl)}")
+        # Por ejemplo, puedes imprimir las dimensiones de los datos:
+        # print(data.shape)
+    """
 
     validation_dataset = DeepFakesDataset(
-        data_root="/srv/nvme/javber/deep_fake_detection_sample/dataset/validation_set/Deepfakes/",
-        labels_csv="/srv/nvme/javber/deep_fake_detection_sample/dataset/metadata.csv",
+        data_root=VALIDATION_DIR,
+        labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
         sequence_length=10,
         mode="val",
     )
+
     validation_samples = validation_dataset.__len__()
 
     val_dl = torch.utils.data.DataLoader(
@@ -539,10 +366,28 @@ if __name__ == "__main__":
         drop_last=False,
         timeout=0,
         worker_init_fn=None,
-        prefetch_factor=2,
+        prefetch_factor=4,
+        # prefetch_factor=None,
         persistent_workers=False,
     )
     del validation_dataset
+
+    # for i in range(1):
+    #     ceros = 0
+    #     unos = 0
+    #     print("Checking data loader...")
+    #     for batch_idx, data in enumerate(dl):
+    #         # Aquí, 'data' contiene un batch de datos (inputs y etiquetas)
+
+    #         if batch_idx % 50 == 0:
+    #             print(f"Batch {batch_idx+1}/{len(dl)}")
+    #         # print(data[1])
+    #         for dato in data[1]:
+    #             if int(dato) == 0:
+    #                 ceros += 1
+    #             elif int(dato) == 1:
+    #                 unos += 1
+    #         print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
 
     model = model.cuda()
     counter = 0
@@ -562,11 +407,14 @@ if __name__ == "__main__":
         train_correct = 0
         positive = 0
         negative = 0
+
         # images = np.transpose(images, (0, 3, 1, 2))
         for index, (images, labels) in enumerate(dl):
             # no transponemos nada, las dims son (batch_size, nframes, width, height, nchannels)
+            # print(f"Iteration: {index}/{len(dl)}")
             labels = labels.unsqueeze(1)
             images = images.cuda()
+            # print(f"labels= {labels}")
 
             y_pred = model(images)
             y_pred = y_pred.cpu()
@@ -585,7 +433,8 @@ if __name__ == "__main__":
             counter += 1
             total_loss += round(loss.item(), 2)
 
-            if index % 1200 == 0:  # Intermediate metrics print
+            if index % 50 == 0:  # Intermediate metrics print
+                print(f"Iteration: {index}/{len(dl)}")
                 print(
                     "\nLoss: ",
                     total_loss / counter,
@@ -604,6 +453,8 @@ if __name__ == "__main__":
         val_positive = 0
         val_negative = 0
         val_counter = 0
+        all_val_labels = []
+        all_val_preds = []
         train_correct /= train_samples
         total_loss /= counter
 
@@ -615,17 +466,27 @@ if __name__ == "__main__":
         for index, (val_images, val_labels) in enumerate(val_dl):
 
             # val_images = np.transpose(val_images, (0, 3, 1, 2))
-
             val_images = val_images.cuda()
             val_labels = val_labels.unsqueeze(1)
             val_pred = model(val_images)
             with torch.no_grad():
+
                 val_pred = val_pred.cpu()
+
+                #
+
                 val_loss = loss_fn(val_pred, val_labels)
+
                 total_val_loss += round(val_loss.item(), 2)
+                #
+
                 corrects, positive_class, negative_class = check_correct(
                     val_pred, val_labels
                 )
+                val_pred = torch.sigmoid(val_pred)
+                # Guardar las predicciones y etiquetas verdaderas para calcular métricas después
+                all_val_labels.extend(val_labels.cpu().numpy())
+                all_val_preds.extend(val_pred.cpu().numpy())
                 val_correct += corrects
                 val_positive += positive_class
                 val_counter += 1
@@ -635,11 +496,56 @@ if __name__ == "__main__":
         scheduler.step()
         bar.finish()
 
-        total_val_loss /= val_counter
+        # Después de la validación, calcular las métricas
+
+        all_val_labels = np.array(all_val_labels).astype(int)
+        all_val_preds = np.array(all_val_preds).round().astype(int)
+
+        # Calcular F1 score
+        f1 = f1_score(all_val_labels, all_val_preds)
+
+        # Calcular AUC (Área bajo la curva ROC)
+        #        auc = roc_auc_score(all_val_labels, all_val_preds)
+
+        # Calcular la matriz de confusión
+        tn, fp, fn, tp = confusion_matrix(all_val_labels, all_val_preds).ravel()
+        conf_matrix = np.array([[tn, fp], [fn, tp]])
+        fig, ax = plt.subplots(figsize=(6, 6))
+        sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", cbar=False, ax=ax)
+        ax.set_xlabel("Predicted Labels")
+        ax.set_ylabel("True Labels")
+        ax.set_title("Confusion Matrix")
+
+        # Añadir la figura a TensorBoard
+        writer.add_figure("Confusion Matrix", fig, t)
+
+        # Cerrar la figura para liberar memoria
+        plt.close(fig)
+        precision = precision_score(all_val_labels, all_val_preds)
+        recall = recall_score(all_val_labels, all_val_preds)
+
+        # Tasa de falsos positivos (FPR) y tasa de falsos negativos (FNR)
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+
+        # Registrar las métricas en TensorBoard
+        writer.add_scalar("Loss/Validation", total_val_loss / val_counter, t)
+        writer.add_scalar("Accuracy/Validation", val_correct / validation_samples, t)
+        # writer.add_scalar("Loss/Validation", total_val_loss, t)
+        # writer.add_scalar("Accuracy/Validation", val_correct, t)
+        writer.add_scalar("Precision/Validation", precision, t)  # NUEVA LÍNEA
+        writer.add_scalar("Recall/Validation", recall, t)  # NUEVA LÍNE
+        writer.add_scalar("F1_Score/Validation", f1, t)
+        #        writer.add_scalar("AUC/Validation", auc, t)
+        writer.add_scalar("FPR/Validation", fpr, t)
+        writer.add_scalar("FNR/Validation", fnr, t)
+        # total_val_loss /= val_counter
         val_correct /= validation_samples
 
-        writer.add_scalar("Loss/Validation", total_val_loss, t)
-        writer.add_scalar("Accuracy/Validation", val_correct, t)
+        # Convertir la matriz de confusión a una cadena
+
+        # writer.add_scalar("Loss/Validation", total_val_loss, t)
+        # writer.add_scalar("Accuracy/Validation", val_correct, t)
         if previous_loss <= total_val_loss:
             print("Validation loss did not improved")
             not_improved_loss += 1
@@ -670,18 +576,4 @@ if __name__ == "__main__":
             # + str(np.count_nonzero(validation_labels == 1))
         )
 
-        if not os.path.exists(MODELS_PATH):
-            os.makedirs(MODELS_PATH)
-        torch.save(
-            model.state_dict(),
-            os.path.join(
-                MODELS_PATH,
-                "efficientnetB"
-                + str(opt.efficient_net)
-                + "_checkpoint"
-                + str(t)
-                + "_"
-                + opt.dataset,
-            ),
-        )
     writer.close()

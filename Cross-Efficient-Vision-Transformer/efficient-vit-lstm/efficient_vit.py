@@ -123,7 +123,7 @@ class EfficientViT(nn.Module):
         depth = config["model"]["depth"]
         heads = config["model"]["heads"]
         mlp_dim = config["model"]["mlp-dim"]
-        lstm_dim = config["model"]["lstm-dim"]
+        # lstm_dim = config["model"]["lstm-dim"]
         emb_dim = config["model"]["emb-dim"]
         dim_head = config["model"]["dim-head"]
         dropout = config["model"]["dropout"]
