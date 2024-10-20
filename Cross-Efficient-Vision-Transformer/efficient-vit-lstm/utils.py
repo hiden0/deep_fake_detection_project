@@ -81,6 +81,28 @@ def get_n_params(model):
     return pp
 
 
+def check_correct_test(preds, labels, umbral_optimo):
+    preds = preds.cpu()
+    labels = labels.cpu()
+    preds = [
+        (np.asarray(torch.sigmoid(pred).detach().numpy()) >= umbral_optimo).astype(int)
+        for pred in preds
+    ]
+
+    correct = 0
+    positive_class = 0
+    negative_class = 0
+    for i in range(len(labels)):
+        pred = int(preds[i])
+        if labels[i] == pred:
+            correct += 1
+        if pred == 1:
+            positive_class += 1
+        else:
+            negative_class += 1
+    return correct, positive_class, negative_class
+
+
 def check_correct(preds, labels):
     preds = preds.cpu()
     labels = labels.cpu()

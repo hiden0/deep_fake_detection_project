@@ -164,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_videos",
         type=int,
-        default=10,
+        default=all,
         help="Maximum number of videos to use for training (default: all).",
     )
     parser.add_argument(
@@ -290,7 +290,7 @@ if __name__ == "__main__":
         data_root=TRAINING_DIR,
         labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
-        sequence_length=5,
+        sequence_length=10,
         mode="train",
     )
     train_samples = train_dataset.__len__()
@@ -330,6 +330,8 @@ if __name__ == "__main__":
     #             unos += 1
     #     print(f"Ceros: {str(ceros)} , Unos:{str(unos)}")
     class_weights = ceros / unos
+
+    class_weights = 1
     loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([class_weights]))
 
     del train_dataset
@@ -346,7 +348,7 @@ if __name__ == "__main__":
         data_root=VALIDATION_DIR,
         labels_csv=VALIDATION_LABELS_PATH,
         image_size=config["model"]["image-size"],
-        sequence_length=5,
+        sequence_length=10,
         mode="val",
     )
 
@@ -574,14 +576,4 @@ if __name__ == "__main__":
             # + str(np.count_nonzero(validation_labels == 1))
         )
 
-        if not os.path.exists(MODELS_PATH):
-            os.makedirs(MODELS_PATH)
-
-        torch.save(
-            model.state_dict(),
-            os.path.join(
-                MODELS_PATH,
-                experiment_name + "_checkpoint_" + str(t),
-            ),
-        )
     writer.close()
